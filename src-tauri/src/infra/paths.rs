@@ -5,8 +5,6 @@ pub const STORE_FILE: &str = "frpc.json";
 pub const CONFIG_TOML_FILE: &str = "frpc.toml";
 pub const DOWNLOAD_ROOT: &str = "downloads";
 
-pub const UNPACK_ROOT: &str = "unpacked";
-
 pub fn app_config_dir(app: &AppHandle) -> PathBuf {
     app.path().app_config_dir().expect("app_config_dir")
 }

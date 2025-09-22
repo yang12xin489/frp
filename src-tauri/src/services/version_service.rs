@@ -39,6 +39,48 @@ struct GhRelease {
     assets: Option<Vec<GhAsset>>,
 }
 
+fn update_frp_version(
+    app: &AppHandle,
+    state: &AppState,
+    name: &str,
+    exist: Option<bool>,
+    active: Option<bool>,
+) -> Result<()> {
+    let r = state.read();
+    let mut versions: Vec<FrpVersion> = r
+        .settings
+        .get(SETTINGS_VERSIONS_KEY)
+        .and_then(|v| serde_json::from_value(v.clone()).ok())
+        .unwrap_or_default();
+    drop(r); // 释放读锁
+
+    if let Some(idx) = versions.iter().position(|v| v.name == name) {
+        if let Some(e) = exist {
+            versions[idx].exist = e;
+        }
+        if let Some(a) = active {
+            if a {
+                for (i, v) in versions.iter_mut().enumerate() {
+                    v.active = i == idx;
+                }
+            } else {
+                versions[idx].active = false;
+            }
+        }
+    }
+
+    {
+        let mut w = state.write();
+        w.settings.insert(
+            SETTINGS_VERSIONS_KEY.to_string(),
+            serde_json::to_value(&versions)
+                .map_err(|e| crate::errors::AppError::Other(e.to_string()))?,
+        );
+    }
+    save_now(app, state)?;
+    Ok(())
+}
+
 fn format_size(n: u64) -> String {
     const UNITS: [&str; 6] = ["B", "KB", "MB", "GB", "TB", "PB"];
     if n == 0 {
@@ -79,8 +121,8 @@ fn pick_asset_by_name(name: &str) -> bool {
 pub async fn get_versions(app: &AppHandle, state: &AppState) -> Result<Vec<FrpVersion>> {
     let cached: Option<Vec<FrpVersion>> = {
         loaded_from_store(app, state)?;
-        let g = state.read();
-        g.settings
+        let r = state.read();
+        r.settings
             .get(SETTINGS_VERSIONS_KEY)
             .and_then(|v| serde_json::from_value::<Vec<FrpVersion>>(v.clone()).ok())
     };
@@ -154,8 +196,8 @@ pub fn get_active(state: &AppState) -> Option<ActiveFrp> {
 
 pub fn set_active(app: &AppHandle, state: &AppState, active_version: &ActiveFrp) -> Result<()> {
     {
-        let mut g = state.write();
-        g.settings.insert(
+        let mut w = state.write();
+        w.settings.insert(
             SETTINGS_ACTIVE_KEY.into(),
             serde_json::to_value(active_version)?,
         );
@@ -209,7 +251,7 @@ pub fn activate(app: &AppHandle, state: &AppState, name: &str) -> Result<()> {
 
     // 5) 写入激活记录
     set_active(app, state, &active_version)?;
-
+    update_frp_version(app, state, name, None, Option::from(true))?;
     let _ = app
         .clone()
         .emit(EVT_ACTIVATING_STATUS, json!({ "status": false }));
@@ -271,6 +313,8 @@ pub fn deactivate(
         std::fs::remove_dir_all(&unpack_dir)?;
     }
 
+    update_frp_version(app, state, name, None, Option::from(false))?;
+
     Ok(())
 }
 
@@ -300,10 +344,17 @@ pub fn delete(
         std::fs::remove_dir_all(&unpack_dir)?;
     }
 
+    update_frp_version(app, state, name, Option::from(false), Option::from(false))?;
+
     Ok(())
 }
 
-pub async fn download(app: &AppHandle, name: &str, url: &str) -> Result<()> {
+pub async fn download(
+    app: &AppHandle,
+    state: &AppState,
+    name: &str,
+    url: &str,
+) -> Result<()> {
     let dir = get_download_dir(app)?;
     let target = dir.join(name);
 
@@ -316,6 +367,7 @@ pub async fn download(app: &AppHandle, name: &str, url: &str) -> Result<()> {
                 progress: 100,
             },
         );
+        update_frp_version(app, state, name, Option::from(true), Option::from(false))?;
         return Ok(());
     }
 
@@ -434,6 +486,8 @@ pub async fn download(app: &AppHandle, name: &str, url: &str) -> Result<()> {
             progress: 100,
         },
     );
+
+    update_frp_version(app, state, name, Option::from(true), Option::from(false))?;
 
     Ok(())
 }

@@ -19,7 +19,7 @@
       </n-card>
     </template>
   </xin-grid>
-  <proxy-editor :visible="show"/>
+  <proxy-editor :visible="show" :initial="preset" @callback="handleSaved"/>
 </template>
 <script setup lang="ts">
 import {onMounted, ref} from 'vue'
@@ -49,6 +49,10 @@ async function onDelete(p: Proxy) {
 
 async function refresh() {
   await store.fetch()
+}
+
+function handleSaved(proxy: Proxy) {
+  show.value = false
 }
 
 onMounted(() => {

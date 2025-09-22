@@ -1,15 +1,16 @@
 use crate::state::{AppState, FrpcProcState};
+use tauri::Manager;
 
 mod errors;
 mod events;
 mod state;
 mod domain {
+    pub mod active_frp;
     pub mod config;
     pub mod progress_payload;
     pub mod proxy;
     pub mod types;
     pub mod version;
-    pub mod active_frp;
 }
 mod infra {
     pub mod archive;
@@ -32,6 +33,15 @@ mod api {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .setup(|app| {
+            #[cfg(debug_assertions)]
+            {
+                let window = app.get_webview_window("main").unwrap();
+                window.open_devtools();
+                //window.close_devtools();
+            }
+            Ok(())
+        })
         .plugin(tauri_plugin_store::Builder::new().build())
         .plugin(tauri_plugin_opener::init())
         .manage(AppState::default())

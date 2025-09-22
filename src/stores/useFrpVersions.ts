@@ -51,6 +51,7 @@ export const useFrpVersions = defineStore('frpVersions', {
                     }
                 }),
                 await listen<{ status: boolean }>(ACTIVATING_STATUS, (e) => {
+                    console.log(this.activating, this.activatingName, e)
                     this.frpVersions.forEach((v, k) => {
                         this.frpVersions.set(k, {...v, active: v.name === this.activatingName})
                     })
@@ -62,7 +63,12 @@ export const useFrpVersions = defineStore('frpVersions', {
         },
 
         unbindAll() {
-            this._uns.forEach(un => un())
+            this._uns.splice(0).forEach((un) => {
+                try {
+                    un();
+                } catch {
+                }
+            });
         },
 
         async download(v: FrpVersion) {

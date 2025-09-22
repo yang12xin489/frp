@@ -50,8 +50,13 @@ pub async fn delete_version(
 }
 
 #[tauri::command]
-pub async fn download_version(app: AppHandle, name: String, url: String) -> Result<(), String> {
-    version_service::download(&app, &name, &url)
+pub async fn download_version(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    name: String,
+    url: String,
+) -> Result<(), String> {
+    version_service::download(&app, &state, &name, &url)
         .await
         .map_err(Into::into)
 }
