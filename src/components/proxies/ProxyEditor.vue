@@ -1,5 +1,6 @@
 <template>
-  <FormModal v-model:show="visible" title="添加 http 代理" :default-model="defaultModel" :initial="initial || undefined" @callback="onSubmit">
+  <FormModal v-model:show="visible" title="添加 http 代理" :default-model="defaultModel" :initial="initial || undefined"
+             @callback="onSubmit">
     <template #default="{ model }">
       <n-divider title-placement="left" class="margin0">基础配置</n-divider>
       <n-form-item label="代理名称">
@@ -33,7 +34,8 @@
         <n-input v-model:value="model.subdomain" clearable/>
       </n-form-item>
       <n-form-item label="自定义域名" v-if="model.switch.domain === 'custom'">
-        <n-select v-model:value="model.customDomains" filterable multiple tag :show-arrow="false" :show="false" placeholder="输入完整域名（www.xx.com），按回车确认"/>
+        <n-select v-model:value="model.customDomains" filterable multiple tag :show-arrow="false" :show="false"
+                  placeholder="输入完整域名（www.xx.com），按回车确认"/>
       </n-form-item>
     </template>
   </FormModal>
@@ -45,9 +47,19 @@ import {DomainType, type HttpProxy, ProxyType} from '@/domain/types'
 import {saveProxy} from '@/api/config'
 
 const defaultModel: HttpProxy = {
-  name: '', type: ProxyType.HTTP, localIP: '127.0.0.1', localPort: 8080,
-  subdomain: '', customDomains: [], locations: [], httpUser: '', httpPassword: '',
-  switch: {domain: DomainType.SUB, auth: false},
+  name: '',
+  type: ProxyType.HTTP,
+  localIP: '127.0.0.1',
+  localPort: 8080,
+  subdomain: '',
+  customDomains: [],
+  locations: [],
+  httpUser: '',
+  httpPassword: '',
+  switch: {
+    domain: DomainType.SUB,
+    auth: false
+  },
 }
 
 const props = defineProps<{ visible: boolean; initial?: Partial<HttpProxy> | null }>()
@@ -58,10 +70,8 @@ const options = (Object.values(DomainType) as DomainType[]).map((v) => ({label: 
 async function onSubmit(v: HttpProxy) {
   await saveProxy(v);
   emit('callback', v)
+  emit("update:visible", false)
 }
 </script>
 <style scoped>
-.margin0 {
-  margin-top: 0;
-}
 </style>

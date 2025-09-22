@@ -15,6 +15,10 @@ use tauri::{AppHandle, Emitter};
 pub struct ClosePayload {
     pub code: Option<i32>,
 }
+#[cfg(windows)]
+use std::os::windows::process::CommandExt;
+#[cfg(windows)]
+const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
 pub fn start(
     app: &AppHandle,
@@ -30,14 +34,23 @@ pub fn start(
         }
     }
 
-    let mut child = Command::new(exe_path)
-        .arg("-c")
-        .arg(cfg_path)
-        .stdin(Stdio::null())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .map_err(|e| format!("spawn frpc failed: {e}"))?;
+    let mut child = {
+        let mut cmd = Command::new(exe_path);
+        cmd.arg("-c")
+            .arg(cfg_path)
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped());
+
+        // Windows不显示控制台窗口
+        #[cfg(windows)]
+        {
+            cmd.creation_flags(CREATE_NO_WINDOW);
+        }
+
+        cmd.spawn().map_err(|e| format!("spawn frpc failed: {e}"))?
+    };
+
     let pid = child.id();
 
     let stdout = child.stdout.take();

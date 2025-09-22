@@ -13,7 +13,7 @@ pub struct Proxy {
     pub name: String,
     #[serde(rename = "type")]
     pub type_: ProxyType,
-    #[serde(default)]
+    #[serde(rename = "localIP")]
     pub local_ip: String,
     #[serde(default)]
     pub local_port: u16,

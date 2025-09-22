@@ -34,11 +34,13 @@ mod api {
 pub fn run() {
     tauri::Builder::default()
         .setup(|app| {
+            let state: tauri::State<AppState> = app.handle().state();
+            services::config_service::loaded_from_store(&app.handle(), &state)?;
             #[cfg(debug_assertions)]
             {
                 let window = app.get_webview_window("main").unwrap();
                 window.open_devtools();
-                //window.close_devtools();
+                window.close_devtools();
             }
             Ok(())
         })

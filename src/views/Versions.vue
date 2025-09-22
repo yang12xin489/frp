@@ -15,7 +15,7 @@
       </n-popover>
     </template>
     <template #default>
-      <n-card hoverable embedded v-for="version in store.frpVersions.values()" :key="version.id" style="width: 100%;">
+      <n-card hoverable embedded v-for="version in store.frpVersions.values()" :key="version.id">
         <template #cover>
           <n-progress
               v-if="store.isDownloading(version.name)"
@@ -63,7 +63,7 @@ import {useFrpVersions} from '@/stores/useFrpVersions'
 import {onBeforeUnmount, onMounted} from 'vue'
 import {useMessage} from 'naive-ui'
 import {Icon} from '@iconify/vue'
-import XinGrid from "@/components/versions/XinGrid.vue";
+import XinGrid from "@/components/common/XinGrid.vue";
 
 const store = useFrpVersions()
 const message = useMessage()

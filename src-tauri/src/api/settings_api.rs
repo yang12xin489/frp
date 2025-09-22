@@ -9,7 +9,6 @@ pub fn set_setting(
     key: String,
     value: Value,
 ) -> Result<bool, String> {
-    svc::loaded_from_store(&app, &state)?;
     {
         let mut g = state.write();
         g.settings.insert(key, value);
@@ -19,11 +18,6 @@ pub fn set_setting(
 }
 
 #[tauri::command]
-pub fn get_setting(
-    app: AppHandle,
-    state: State<AppState>,
-    key: String,
-) -> Result<Option<Value>, String> {
-    svc::loaded_from_store(&app, &state)?;
+pub fn get_setting(state: State<AppState>, key: String) -> Result<Option<Value>, String> {
     Ok(state.read().settings.get(&key).cloned())
 }

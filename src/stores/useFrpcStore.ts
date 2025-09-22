@@ -11,7 +11,8 @@ export const useFrpcStore = defineStore('frpc', {
     }),
     actions: {
         push(line: string, isErr = false) {
-            const txt = isErr ? `[ERR] ${line}` : line
+            let txt = isErr ? `[ERR] ${line}` : line
+            txt = txt.replace(/\x1B\[[0-9;]*m/g, '')
             this.logs.push(txt.endsWith('\n') ? txt : txt + '\n')
         },
         clear() {

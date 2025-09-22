@@ -4,7 +4,7 @@ use crate::domain::version::{FrpVersion, SETTINGS_VERSIONS_KEY};
 use crate::events::{EVT_ACTIVATING_STATUS, EVT_DOWNLOAD_PROGRESS};
 use crate::infra::archive::{extract_archive_to, find_executable_recursively, frpc_name};
 use crate::infra::paths::unpack_dir_for;
-use crate::services::config_service::{loaded_from_store, save_now};
+use crate::services::config_service::save_now;
 use crate::services::runner;
 use crate::state::{AppState, FrpcProcState};
 use crate::{
@@ -120,7 +120,6 @@ fn pick_asset_by_name(name: &str) -> bool {
 
 pub async fn get_versions(app: &AppHandle, state: &AppState) -> Result<Vec<FrpVersion>> {
     let cached: Option<Vec<FrpVersion>> = {
-        loaded_from_store(app, state)?;
         let r = state.read();
         r.settings
             .get(SETTINGS_VERSIONS_KEY)
@@ -207,8 +206,6 @@ pub fn set_active(app: &AppHandle, state: &AppState, active_version: &ActiveFrp)
 }
 
 pub fn activate(app: &AppHandle, state: &AppState, name: &str) -> Result<()> {
-    loaded_from_store(app, state)?;
-
     // 1) 确认压缩包存在
     let downloads_dir = get_download_dir(app)?;
     let archive = downloads_dir.join(name);
@@ -302,8 +299,6 @@ pub fn deactivate(
 ) -> Result<()> {
     stop_if_target_active(state, proc_state, name);
 
-    loaded_from_store(app, state)?;
-
     // 如果当前激活的是它，先清空记录（调用者也可在外层先停进程）
     clear_active_if_matches(app, state, name)?;
 
@@ -326,8 +321,6 @@ pub fn delete(
 ) -> Result<()> {
     stop_if_target_active(state, proc_state, name);
 
-    loaded_from_store(app, state)?;
-
     // 如果当前激活的是它，先清空记录（调用者也可在外层先停进程）
     clear_active_if_matches(app, state, name)?;
 
@@ -349,12 +342,7 @@ pub fn delete(
     Ok(())
 }
 
-pub async fn download(
-    app: &AppHandle,
-    state: &AppState,
-    name: &str,
-    url: &str,
-) -> Result<()> {
+pub async fn download(app: &AppHandle, state: &AppState, name: &str, url: &str) -> Result<()> {
     let dir = get_download_dir(app)?;
     let target = dir.join(name);
 

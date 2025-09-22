@@ -1,19 +1,15 @@
 <template>
-  <n-modal v-model:show="showInner" :mask-closable="!loading" transform-origin="center"
-           style="width: 90%; height: 80vh">
+  <n-modal v-model:show="showInner" :mask-closable="!loading" transform-origin="center" style="width: 90%; height: 80vh">
     <n-card :title="title" class="card-keep-header" :bordered="false" size="huge">
       <n-scrollbar>
-        <n-form ref="formRef" :model="model" :rules="rules" :label-placement="labelPlacement" :label-width="labelWidth"
-                size="small">
+        <n-form ref="formRef" :model="model" :rules="rules" :label-placement="labelPlacement" :label-width="labelWidth" size="small">
           <slot :model="model" :form-ref="formRef"></slot>
         </n-form>
       </n-scrollbar>
-
       <template #footer>
         <slot name="footer" :onSave="onSave" :loading="loading">
           <n-space justify="end">
-            <!-- 改这里：直接改本地 showInner，立刻关闭；watch/set 会自动 emit 给父组件 -->
-            <n-button @click="onCancel" :disabled="loading">{{ cancelText }}</n-button>
+            <n-button @click="emit('update:show', false)" :disabled="loading">{{ cancelText }}</n-button>
             <n-button type="primary" :loading="loading" @click="onSave">{{ okText }}</n-button>
           </n-space>
         </slot>
@@ -21,9 +17,8 @@
     </n-card>
   </n-modal>
 </template>
-
 <script setup lang="ts">
-import {reactive, ref, toRaw, unref, watch, computed} from 'vue'
+import {reactive, ref, toRaw, unref, watch} from 'vue'
 import type {FormInst, FormRules} from 'naive-ui'
 
 type LabelPlacement = 'left' | 'top'
@@ -41,20 +36,16 @@ const props = withDefaults(defineProps<{
 }>(), {
   initial: null, rules: undefined, labelPlacement: 'left', labelWidth: 80, okText: '保存', cancelText: '取消',
 })
-
 const emit = defineEmits<{ (e: 'update:show', v: boolean): void; (e: 'callback', model: any): void }>()
 
-/** ① 用 computed 做 v-model“代理”，避免双向 watch 的绕路 */
-const showInner = computed({
-  get: () => props.show,
-  set: (v: boolean) => emit('update:show', v),
-})
-
+const showInner = ref(props.show);
+watch(() => props.show, (v) => (showInner.value = v));
+watch(showInner, (v) => emit('update:show', v))
 const formRef = ref<FormInst | null>(null)
 const loading = ref(false)
 
 function clonePlain<T>(val: T): T {
-  const v = toRaw(unref(val)) as any
+  const v = toRaw(unref(val)) as any;
   try {
     return structuredClone(v)
   } catch {
@@ -69,7 +60,7 @@ function deepMergeSkipUndef(target: any, source: any) {
   for (const [k, v] of Object.entries(source)) {
     if (v === undefined) continue
     if (v && typeof v === 'object' && !Array.isArray(v)) {
-      if (!target[k] || typeof target[k] !== 'object') target[k] = {}
+      if (!target[k] || typeof target[k] !== 'object') target[k] = {};
       deepMergeSkipUndef(target[k], v)
     } else {
       target[k] = v
@@ -77,8 +68,7 @@ function deepMergeSkipUndef(target: any, source: any) {
   }
 }
 
-/** 打开时重置表单模型（用 showInner 来触发） */
-watch(showInner, (v) => {
+watch(() => props.show, (v) => {
   if (!v) return
   Object.keys(model).forEach((k) => delete (model as any)[k])
   deepMergeSkipUndef(model, clonePlain(props.defaultModel || {}))
@@ -91,19 +81,12 @@ async function onSave() {
   try {
     await formRef.value.validate?.()
     emit('callback', clonePlain(model))
-    showInner.value = false // 保存后关闭
+    emit('update:show', false)
   } finally {
     loading.value = false
   }
 }
-
-/** ② 取消时直接本地关闭（会通过 computed 的 set 自动 emit 给父组件） */
-function onCancel() {
-  if (loading.value) return
-  showInner.value = false
-}
 </script>
-
 <style scoped>
 .card-keep-header {
   display: flex;

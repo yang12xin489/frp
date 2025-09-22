@@ -4,7 +4,17 @@
       <n-button type="success" @click="open">添加</n-button>
     </template>
     <template #default>
-      <n-card v-for="proxy in store.proxies" :key="proxy.name" :title="proxy.name" size="small" hoverable>
+      <n-card hoverable embedded v-for="proxy in store.proxies as HttpProxy[]" :key="proxy.name">
+        <template #header>
+          <n-flex justify="space-between" align="center">
+            <n-tag :bordered="false" type="success">{{ proxy.type }}</n-tag>
+            <n-switch/>
+          </n-flex>
+        </template>
+        <n-flex justify="space-between" :vertical="true">
+          <span style="font-size: 15px;font-weight: bold">{{ proxy.name }}</span>
+          <span style="font-size: 12px;">{{ proxy.localIP }}:{{ proxy.localPort }}</span>
+        </n-flex>
         <template #footer>
           <n-space justify="end">
             <n-button size="small" @click="onEdit(proxy)">编辑</n-button>
@@ -19,13 +29,13 @@
       </n-card>
     </template>
   </xin-grid>
-  <proxy-editor :visible="show" :initial="preset" @callback="handleSaved"/>
+  <proxy-editor v-model:visible="show" :initial="preset" @callback="callback"/>
 </template>
 <script setup lang="ts">
-import {onMounted, ref} from 'vue'
+import {onMounted, ref, nextTick} from 'vue'
 import {useProxiesStore} from '@/stores/useProxiesStore'
-import type {Proxy} from '@/domain/types'
-import XinGrid from "@/components/versions/XinGrid.vue";
+import type {HttpProxy, Proxy} from '@/domain/types'
+import XinGrid from "@/components/common/XinGrid.vue";
 import ProxyEditor from "@/components/proxies/ProxyEditor.vue";
 
 const store = useProxiesStore()
@@ -34,12 +44,16 @@ const preset = ref<Partial<Proxy> | null>(null)
 
 function open() {
   preset.value = null;
-  show.value = true
+  nextTick(() => {
+    show.value = true;
+  });
 }
 
 function onEdit(p: Proxy) {
   preset.value = {...p};
-  show.value = true
+  nextTick(() => {
+    show.value = true;
+  });
 }
 
 async function onDelete(p: Proxy) {
@@ -51,8 +65,9 @@ async function refresh() {
   await store.fetch()
 }
 
-function handleSaved(proxy: Proxy) {
+async function callback() {
   show.value = false
+  await refresh()
 }
 
 onMounted(() => {
