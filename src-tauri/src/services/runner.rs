@@ -1,3 +1,4 @@
+// services/runner.rs
 use crate::{
     events::{EVT_CLOSE, EVT_LOG_ERROR, EVT_LOG_STDERR, EVT_LOG_STDOUT},
     state::FrpcProcState,
@@ -5,21 +6,24 @@ use crate::{
 use serde::Serialize;
 use std::{
     io::{BufRead, BufReader},
-    process::{Command, Stdio},
+    process::{Child, Command, Stdio},
     thread,
     time::Duration,
 };
-use tauri::{AppHandle, Emitter};
+use tauri::{AppHandle, Emitter, Manager};
 
 #[derive(Serialize, Clone, Debug)]
 pub struct ClosePayload {
     pub code: Option<i32>,
 }
+
 #[cfg(windows)]
 use std::os::windows::process::CommandExt;
+
 #[cfg(windows)]
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
+/// 启动 frpc 子进程（带 stdout/stderr 事件、退出事件）
 pub fn start(
     app: &AppHandle,
     proc_state: &FrpcProcState,
@@ -34,32 +38,74 @@ pub fn start(
         }
     }
 
-    let mut child = {
-        let mut cmd = Command::new(exe_path);
-        cmd.arg("-c")
-            .arg(cfg_path)
-            .stdin(Stdio::null())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped());
+    // 构建命令
+    let mut cmd = Command::new(exe_path);
+    cmd.arg("-c")
+        .arg(cfg_path)
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
 
-        // Windows不显示控制台窗口
-        #[cfg(windows)]
-        {
-            cmd.creation_flags(CREATE_NO_WINDOW);
+    // Windows: 隐藏控制台窗口
+    #[cfg(windows)]
+    {
+        cmd.creation_flags(CREATE_NO_WINDOW);
+    }
+
+    // Unix：fork/exec 前 setsid() → 新会话/新进程组
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::CommandExt;
+        unsafe {
+            cmd.pre_exec(|| {
+                // 失败也别 panic，交给上层；但通常不会失败
+                if libc::setsid() == -1 {
+                    // 返回 Err 会让 spawn 报错
+                    return Err(std::io::Error::last_os_error());
+                }
+                Ok(())
+            });
         }
+    }
 
-        cmd.spawn().map_err(|e| format!("spawn frpc failed: {e}"))?
-    };
-
+    let mut child = cmd
+        .spawn()
+        .map_err(|e| format!("spawn frpc failed: {e} (exe: {exe_path}, cfg: {cfg_path})"))?;
     let pid = child.id();
 
+    // 通知 watchdog
+    if let Some(mut tx) = app
+        .state::<FrpcProcState>()
+        .watchdog
+        .lock()
+        .unwrap()
+        .as_ref()
+        .clone()
+    {
+        use std::io::Write;
+        #[cfg(unix)]
+        {
+            // 因为上面 pre_exec 里 setsid() 了，frpc 是新会话/进程组的组长：gpid == pid
+            let _ = writeln!(tx, "SET PG {pid}");
+        }
+        #[cfg(windows)]
+        {
+            // 没有 POSIX 组，发 PID 让 watchdog 用枚举子树的方式杀
+            let _ = writeln!(tx, "SET PID {pid}");
+        }
+    }
+
+    // 拿到输出管道
     let stdout = child.stdout.take();
     let stderr = child.stderr.take();
+
+    // 放入全局状态
     {
         let mut g = proc_state.child.lock().map_err(|e| e.to_string())?;
         *g = Some(child);
     }
 
+    // stdout → 事件
     if let Some(out) = stdout {
         let app2 = app.clone();
         thread::spawn(move || {
@@ -77,6 +123,8 @@ pub fn start(
             }
         });
     }
+
+    // stderr → 事件
     if let Some(err) = stderr {
         let app2 = app.clone();
         thread::spawn(move || {
@@ -95,6 +143,7 @@ pub fn start(
         });
     }
 
+    // 退出监控线程：子进程退出→清空句柄并发 EVT_CLOSE
     let app_close = app.clone();
     let child_arc = proc_state.child.clone();
     thread::spawn(move || loop {
@@ -109,25 +158,42 @@ pub fn start(
                     }
                 }
             } else {
-                break;
+                break; // 已被 stop() 清空
             }
         };
+
         if let Some(status) = status_opt {
+            // 清空句柄、发送 close 事件
             let mut guard = child_arc.lock().expect("poisoned");
             *guard = None;
             let code = status.code();
-            let _ = app_close.emit(EVT_CLOSE, crate::services::runner::ClosePayload { code });
+            let _ = app_close.emit(EVT_CLOSE, ClosePayload { code });
             break;
         }
+
         thread::sleep(Duration::from_millis(200));
     });
+
     Ok(pid)
 }
 
-pub fn stop(proc_state: &FrpcProcState) -> Result<(), String> {
-    let mut g = proc_state.child.lock().map_err(|e| e.to_string())?;
-    if let Some(ch) = g.as_mut() {
-        ch.kill().map_err(|e| format!("kill frpc failed: {e}"))?;
+/// 优雅终止（Unix: 给进程组发 SIGTERM→超时 SIGKILL；Windows: 直接 kill）
+pub fn stop(app: &AppHandle, proc_state: &FrpcProcState) -> Result<(), String> {
+    let mut opt = proc_state.child.lock().map_err(|e| e.to_string())?;
+    if let Some(ch) = opt.as_mut() {
+        graceful_kill(ch)?;
+    }
+    // ⬇️ 告诉 watchdog：当前没有需要托管的目标了
+    if let Some(mut tx) = app
+        .state::<FrpcProcState>()
+        .watchdog
+        .lock()
+        .unwrap()
+        .as_ref()
+        .clone()
+    {
+        use std::io::Write;
+        let _ = writeln!(tx, "CLEAR");
     }
     Ok(())
 }
@@ -135,4 +201,54 @@ pub fn stop(proc_state: &FrpcProcState) -> Result<(), String> {
 pub fn is_running(proc_state: &FrpcProcState) -> Result<bool, String> {
     let g = proc_state.child.lock().map_err(|e| e.to_string())?;
     Ok(g.is_some())
+}
+
+/* ---------------- 内部：跨平台终止 ---------------- */
+
+fn graceful_kill(child: &mut Child) -> Result<(), String> {
+    #[cfg(unix)]
+    {
+        // 对整个进程组发信号（负 pid）
+        unsafe {
+            let pid = child.id() as i32;
+            let _ = libc::kill(-pid, libc::SIGTERM);
+        }
+
+        // 最多等 2s
+        if wait_with_timeout(child, Duration::from_millis(2000))? {
+            return Ok(());
+        }
+
+        // 还没退出 → SIGKILL
+        unsafe {
+            let pid = child.id() as i32;
+            let _ = libc::kill(-pid, libc::SIGKILL);
+        }
+        let _ = child.wait();
+        return Ok(());
+    }
+
+    #[cfg(not(unix))]
+    {
+        child.kill().map_err(|e| format!("kill frpc failed: {e}"))?;
+        let _ = child.wait();
+        Ok(())
+    }
+}
+
+#[cfg(unix)]
+fn wait_with_timeout(child: &mut Child, timeout: Duration) -> Result<bool, String> {
+    let start = Instant::now();
+    loop {
+        match child.try_wait() {
+            Ok(Some(_st)) => return Ok(true),
+            Ok(None) => {
+                if start.elapsed() >= timeout {
+                    return Ok(false);
+                }
+                thread::sleep(Duration::from_millis(50));
+            }
+            Err(e) => return Err(format!("try_wait failed: {e}")),
+        }
+    }
 }

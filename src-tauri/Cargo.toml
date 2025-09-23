@@ -1,28 +1,31 @@
 [package]
-name = "frpc"
+name = "frpc-client"
 version = "0.1.0"
 description = "A Tauri App"
 authors = ["you"]
 edition = "2021"
+default-run = "frpc-client"
 
 [lib]
 name = "frpc_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
+[[bin]]
+name = "frpc-client"
+path = "src/main.rs"
+
+[[bin]]
+name = "frp-client-watchdog"
+path = "src/bin/watchdog_main.rs"
+
 [profile.dev]
-# 以较小的步骤编译您的二进制文件。
 incremental = true
 
 [profile.release]
-# 允许 LLVM 执行更好的优化。
 codegen-units = 1
-# 启用链接时优化。
 lto = true
-# 优先考虑小的二进制文件大小。如果您更喜欢速度，请使用 `3`。
 opt-level = "s"
-# 通过禁用 panic 处理程序来提高性能。
 panic = "abort"
-# 确保移除调试符号。
 strip = true
 
 [build-dependencies]
@@ -44,3 +47,14 @@ regex = "1.11.2"
 futures-util = "0.3.31"
 tokio = "1.47.1"
 chrono = "0.4.42"
+
+# Unix 需要组信号
+libc = "0.2"
+
+# Windows 需要枚举进程树 + TerminateProcess（不用 Job）
+windows-sys = { version = "0.61.0", features = [
+    "Win32_System_Diagnostics_ToolHelp",
+    "Win32_System_Threading",
+    "Win32_Foundation"
+] }
+anyhow = "1.0.100"

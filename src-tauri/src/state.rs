@@ -1,5 +1,6 @@
 use crate::domain::config::FrpcConfig;
 use serde_json::{Map, Value};
+use std::process::{Child, ChildStdin};
 use std::sync::{Arc, RwLock};
 
 #[derive(Default)]
@@ -20,11 +21,10 @@ impl AppState {
     }
 }
 
-// 进程句柄状态
-use std::process::Child;
 use std::sync::Mutex;
 
 #[derive(Default)]
 pub struct FrpcProcState {
     pub child: Arc<Mutex<Option<Child>>>,
+    pub watchdog: Arc<Mutex<Option<ChildStdin>>>
 }

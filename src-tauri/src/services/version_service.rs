@@ -280,12 +280,17 @@ pub fn clear_active_if_matches(app: &AppHandle, state: &AppState, name: &str) ->
     Ok(())
 }
 
-fn stop_if_target_active(state: &AppState, proc_state: &State<FrpcProcState>, name: &str) {
+fn stop_if_target_active(
+    app: &AppHandle,
+    state: &AppState,
+    proc_state: &State<FrpcProcState>,
+    name: &str,
+) {
     if let Some(active) = get_active(state) {
         if active.name == name {
             let running = runner::is_running(proc_state).unwrap_or_else(|_e| false);
             if running {
-                let _ = runner::stop(proc_state);
+                let _ = runner::stop(app, proc_state);
             }
         }
     }
@@ -297,7 +302,7 @@ pub fn deactivate(
     proc_state: &State<FrpcProcState>,
     name: &str,
 ) -> Result<()> {
-    stop_if_target_active(state, proc_state, name);
+    stop_if_target_active(app, state, proc_state, name);
 
     // 如果当前激活的是它，先清空记录（调用者也可在外层先停进程）
     clear_active_if_matches(app, state, name)?;
@@ -319,7 +324,7 @@ pub fn delete(
     proc_state: &State<FrpcProcState>,
     name: &str,
 ) -> Result<()> {
-    stop_if_target_active(state, proc_state, name);
+    stop_if_target_active(app, state, proc_state, name);
 
     // 如果当前激活的是它，先清空记录（调用者也可在外层先停进程）
     clear_active_if_matches(app, state, name)?;

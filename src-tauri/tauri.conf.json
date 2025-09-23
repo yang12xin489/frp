@@ -1,12 +1,12 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "frpc",
+  "productName": "frpc-client",
   "version": "0.1.0",
   "identifier": "frp-client",
   "build": {
-    "beforeDevCommand": "pnpm dev",
     "devUrl": "http://localhost:1420",
-    "beforeBuildCommand": "pnpm build",
+    "beforeDevCommand": "cargo build --manifest-path src-tauri/Cargo.toml --bin frp-client-watchdog && pnpm dev",
+    "beforeBuildCommand": "cargo build --manifest-path src-tauri/Cargo.toml --release --bin frp-client-watchdog && pnpm build",
     "frontendDist": "../dist",
     "removeUnusedCommands": true
   },

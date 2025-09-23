@@ -1,29 +1,35 @@
 <template>
   <n-space vertical>
-    <Toolbar :running="running" :busy="busy" @toggle="startOrStop" @clear="clearLogs" @copy="copyLogs"/>
-    <LogPanel :logs="logs"/>
+    <n-space :size="8">
+      <n-button :type="running ? 'error' : 'success'" :loading="busy" @click="startOrStop">
+        {{ running ? '停止' : '启动' }}
+      </n-button>
+      <n-button tertiary @click="clearLogs">清空</n-button>
+      <n-button tertiary @click="copyLogs">复制日志</n-button>
+    </n-space>
+    <LogPanel title="frpc 日志" @clear="clearLogs"/>
   </n-space>
 </template>
+
 <script setup lang="ts">
-import Toolbar from '@/components/frpc/Toolbar.vue'
 import LogPanel from '@/components/frpc/LogPanel.vue'
 import {useFrpcStore} from '@/stores/useFrpcStore'
 import {exportTomlToFile, startFrpc, stopFrpc} from '@/api/frpc'
-import {computed, onMounted, ref} from 'vue'
 import {useMessage} from 'naive-ui'
+import {computed, onMounted, ref} from 'vue'
 import {getActiveVersion} from "@/api/frpVersions.ts";
-import {ActiveFrp} from "@/domain/frpVersion.ts";
+import type {ActiveFrp} from "@/domain/frpVersion.ts";
 
-const frpc = useFrpcStore();
+const frpc = useFrpcStore()
 const message = useMessage()
+
+const running = computed(() => frpc.running)
 const busy = ref(false)
-const logs = computed(() => frpc.logs)
-const running = computed({get: () => frpc.running, set: (v) => (frpc.running = v)})
-const activeVersion = ref<ActiveFrp>()
+const ver = ref<ActiveFrp>()
 
 onMounted(async () => {
-  await frpc.hydrate();
-  activeVersion.value = await getActiveVersion()
+  await frpc.hydrate()
+  ver.value = await getActiveVersion()
 })
 
 function clearLogs() {
@@ -32,7 +38,7 @@ function clearLogs() {
 
 async function copyLogs() {
   try {
-    await navigator.clipboard?.writeText(frpc.logs.join(''));
+    await navigator.clipboard?.writeText(frpc.asText);
     message.success('已复制')
   } catch {
     message.error('复制失败')
@@ -43,23 +49,23 @@ async function startOrStop() {
   if (busy.value) return
   busy.value = true
   try {
-    if (!running.value) {
+    if (!frpc.running) {
       frpc.clear()
       const cfgPath = await exportTomlToFile()
-      if (!activeVersion?.value?.exePath) {
+      if (!ver.value?.exePath) {
         message.warning('请先在“版本管理”下载并激活一个 frp 版本');
         return
       }
-      await startFrpc(activeVersion?.value?.exePath, cfgPath)
-      running.value = true
+      await startFrpc(ver.value.exePath, cfgPath)
+      frpc.running = true
       message.success('frpc 已启动')
     } else {
-      await stopFrpc();
-      running.value = false;
+      await stopFrpc()
+      frpc.running = false
       message.info('frpc 已停止')
     }
   } catch (e) {
-    console.error(e);
+    console.error(e)
     message.error('操作失败')
   } finally {
     busy.value = false

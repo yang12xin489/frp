@@ -1,8 +1,7 @@
-use crate::services::runner;
 use crate::state::{AppState, FrpcProcState};
 use tauri::menu::{Menu, MenuItem};
 use tauri::tray::TrayIconBuilder;
-use tauri::{ActivationPolicy, Manager, WindowEvent};
+use tauri::{Manager, State, WindowEvent};
 
 mod errors;
 mod events;
@@ -21,10 +20,11 @@ mod infra {
     pub mod paths;
     pub mod store;
 }
-mod services {
+pub mod services {
     pub mod config_service;
     pub mod runner;
     pub mod version_service;
+    pub mod watchdog_service;
 }
 mod api {
     pub mod config_api;
@@ -32,6 +32,20 @@ mod api {
     pub mod runner_api;
     pub mod settings_api;
     pub mod versions_api;
+}
+
+#[cfg(target_os = "macos")]
+use runtime::ActivationPolicy;
+
+fn kill_child_if_any(st: &State<'_, FrpcProcState>) {
+    if let Ok(mut g) = st.child.lock() {
+        if let Some(ch) = g.as_mut() {
+            // 强制兜底一把（不会重复触发 close 事件没关系）
+            let _ = ch.kill();
+            let _ = ch.wait();
+        }
+        *g = None;
+    }
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -57,7 +71,7 @@ pub fn run() {
             }
         })
         .setup(|app| {
-            let state: tauri::State<AppState> = app.handle().state();
+            let state: State<AppState> = app.handle().state();
             services::config_service::loaded_from_store(&app.handle(), &state)?;
             #[cfg(debug_assertions)]
             {
@@ -94,16 +108,33 @@ pub fn run() {
                         }
                     }
                     "quit" => {
-                        let state: tauri::State<FrpcProcState> = app.app_handle().state();
-                        let running = runner::is_running(&state).unwrap_or_else(|_e| false);
-                        if running {
-                            let _ = runner::stop(&state);
+                        if let Some(st) = app.try_state::<FrpcProcState>() {
+                            kill_child_if_any(&st);
                         }
                         app.exit(0)
                     }
                     _ => {}
                 })
                 .build(app)?;
+
+            let mut exe = std::env::current_exe().expect("current_exe");
+            exe.set_file_name(if cfg!(windows) {
+                "frp-client-watchdog.exe"
+            } else {
+                "frp-client-watchdog"
+            });
+            let mut child = std::process::Command::new(&exe)
+                .stdin(std::process::Stdio::piped())
+                .stdout(std::process::Stdio::null())
+                .stderr(std::process::Stdio::null())
+                .spawn()
+                .map_err(|e| {
+                    anyhow::anyhow!("spawn reaper failed: {e} (path: {})", exe.display())
+                })?;
+
+            if let Some(tx) = child.stdin.take() {
+                *app.state::<FrpcProcState>().watchdog.lock().unwrap() = Some(tx);
+            }
             Ok(())
         })
         .plugin(tauri_plugin_store::Builder::new().build())

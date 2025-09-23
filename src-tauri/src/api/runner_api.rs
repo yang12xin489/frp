@@ -12,8 +12,8 @@ pub async fn start_frpc(
 }
 
 #[tauri::command]
-pub async fn stop_frpc(state: State<'_, FrpcProcState>) -> Result<(), String> {
-    crate::services::runner::stop(&state)
+pub async fn stop_frpc(app: AppHandle, state: State<'_, FrpcProcState>) -> Result<(), String> {
+    crate::services::runner::stop(&app, &state)
 }
 
 #[tauri::command]

@@ -1,36 +1,57 @@
+// src/stores/useFrpcStore.ts
 import {defineStore} from 'pinia'
 import {listen, type UnlistenFn} from '@tauri-apps/api/event'
 import {frpcStatus} from '@/api/frpc'
 
+export type LogLevel = 'stdout' | 'stderr' | 'system'
+
+export interface LogEntry {
+    id: number;
+    ts: number;
+    level: LogLevel;
+    text: string
+}
+
+const MAX_LINES = 5000
+
 export const useFrpcStore = defineStore('frpc', {
     state: () => ({
         running: false,
-        logs: [] as string[],
+        entries: [] as LogEntry[],
+        _nextId: 1,
         _listening: false,
         _un: [] as UnlistenFn[],
     }),
+    getters: {
+        asText: (s) => s.entries
+            .map(e => `[${new Date(e.ts).toLocaleTimeString()}] ${e.level.toUpperCase()} ${e.text}`)
+            .join('\n'),
+    },
     actions: {
-        push(line: string, isErr = false) {
-            let txt = isErr ? `[ERR] ${line}` : line
-            txt = txt.replace(/\x1B\[[0-9;]*m/g, '')
-            this.logs.push(txt.endsWith('\n') ? txt : txt + '\n')
+        pushRaw(line: string, level: LogLevel) {
+            const parts = (line ?? '').split(/\r?\n/)
+            for (const p of parts) {
+                if (!p) continue
+                this.entries.push({id: this._nextId++, ts: Date.now(), level, text: p})
+                if (this.entries.length > MAX_LINES) this.entries.splice(0, this.entries.length - MAX_LINES)
+            }
         },
         clear() {
-            this.logs.length = 0
+            this.entries = []
         },
         async attachListeners() {
             if (this._listening) return
-            const un1 = await listen<string>('frpc://stdout', (e) => this.push(e.payload))
-            const un2 = await listen<string>('frpc://stderr', (e) => this.push(e.payload, true))
-            const un3 = await listen<{ code: number | null }>('frpc://close', (e) => {
-                this.push(`\n[frpc] 退出 code=${e.payload.code} signal=null\n`)
+            const un1 = await listen<string>('frpc://stdout', e => this.pushRaw(e.payload, 'stdout'))
+            const un2 = await listen<string>('frpc://stderr', e => this.pushRaw(e.payload, 'stderr'))
+            const un3 = await listen<{ code: number | null }>('frpc://close', e => {
+                this.pushRaw(`\n[frpc] 退出 code=${e.payload.code ?? 'null'} signal=null`, 'system')
                 this.running = false
             })
             this._un = [un1, un2, un3]
             this._listening = true
         },
         detachListeners() {
-            this._un.forEach((u) => {
+            this._un.forEach(u => {
                 try {
                     u()
                 } catch {
