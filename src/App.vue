@@ -44,3 +44,24 @@ function go(val: string) {
   router.push(val)
 }
 </script>
+<style scoped>
+html, body, #app {
+  -webkit-user-select: none !important;
+  -moz-user-select: none !important;
+  -ms-user-select: none !important;
+  user-select: none !important;
+}
+
+img {
+  -webkit-user-drag: none;
+  user-drag: none;
+}
+
+input, textarea, [contenteditable="true"],
+.selectable, .selectable * {
+  -webkit-user-select: text !important;
+  -moz-user-select: text !important;
+  -ms-user-select: text !important;
+  user-select: text !important;
+}
+</style>

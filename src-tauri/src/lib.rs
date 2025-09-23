@@ -1,5 +1,8 @@
+use crate::services::runner;
 use crate::state::{AppState, FrpcProcState};
-use tauri::Manager;
+use tauri::menu::{Menu, MenuItem};
+use tauri::tray::TrayIconBuilder;
+use tauri::{ActivationPolicy, Manager, WindowEvent};
 
 mod errors;
 mod events;
@@ -30,9 +33,29 @@ mod api {
     pub mod settings_api;
     pub mod versions_api;
 }
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .on_window_event(|window, event| {
+            if let WindowEvent::CloseRequested { api, .. } = event {
+                api.prevent_close(); // 不退出应用
+                let _ = window.hide(); // 仅隐藏窗口
+
+                #[cfg(target_os = "macos")]
+                {
+                    let _ = window
+                        .app_handle()
+                        .set_activation_policy(ActivationPolicy::Accessory);
+                }
+
+                // —— Windows/Linux: 从任务栏移除
+                #[cfg(not(target_os = "macos"))]
+                {
+                    let _ = window.set_skip_taskbar(true);
+                }
+            }
+        })
         .setup(|app| {
             let state: tauri::State<AppState> = app.handle().state();
             services::config_service::loaded_from_store(&app.handle(), &state)?;
@@ -42,6 +65,45 @@ pub fn run() {
                 window.open_devtools();
                 window.close_devtools();
             }
+
+            let show = MenuItem::with_id(app, "show", "显示主窗口", true, None::<&str>)?;
+            let quit = MenuItem::with_id(app, "quit", "退出", true, None::<&str>)?;
+            let menu = Menu::with_items(app, &[&show, &quit])?;
+
+            TrayIconBuilder::new()
+                .icon(app.default_window_icon().unwrap().clone())
+                .menu(&menu)
+                .show_menu_on_left_click(true)
+                .on_menu_event(|app, event| match event.id.as_ref() {
+                    "show" => {
+                        #[cfg(target_os = "macos")]
+                        {
+                            let _ = app.set_activation_policy(ActivationPolicy::Regular);
+                        }
+
+                        if let Some(win) = app.get_webview_window("main") {
+                            #[allow(unused_must_use)]
+                            {
+                                #[cfg(not(target_os = "macos"))]
+                                win.set_skip_taskbar(false); // Windows/Linux 恢复任务栏
+
+                                win.show();
+                                win.unminimize();
+                                win.set_focus();
+                            }
+                        }
+                    }
+                    "quit" => {
+                        let state: tauri::State<FrpcProcState> = app.app_handle().state();
+                        let running = runner::is_running(&state).unwrap_or_else(|_e| false);
+                        if running {
+                            let _ = runner::stop(&state);
+                        }
+                        app.exit(0)
+                    }
+                    _ => {}
+                })
+                .build(app)?;
             Ok(())
         })
         .plugin(tauri_plugin_store::Builder::new().build())
