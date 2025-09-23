@@ -5,8 +5,8 @@
   "identifier": "frp-client",
   "build": {
     "devUrl": "http://localhost:1420",
-    "beforeDevCommand": "cargo build --manifest-path src-tauri/Cargo.toml --bin frp-client-watchdog && pnpm dev",
-    "beforeBuildCommand": "cargo build --manifest-path src-tauri/Cargo.toml --release --bin frp-client-watchdog && pnpm build",
+    "beforeDevCommand": "cross-env CARGO_TARGET_DIR=src-tauri/target cargo build --manifest-path watchdog/Cargo.toml && node scripts/prepare-sidecar.js && pnpm dev",
+    "beforeBuildCommand": "cross-env CARGO_TARGET_DIR=src-tauri/target cargo build --manifest-path watchdog/Cargo.toml --release && node scripts/prepare-sidecar.js && pnpm build",
     "frontendDist": "../dist",
     "removeUnusedCommands": true
   },
@@ -41,6 +41,9 @@
     "targets": "all",
     "icon": [
       "icons/icon.png"
+    ],
+    "externalBin": [
+      "target/frp-client-watchdog"
     ]
   }
 }

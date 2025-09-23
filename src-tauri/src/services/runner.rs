@@ -17,6 +17,7 @@ pub struct ClosePayload {
     pub code: Option<i32>,
 }
 
+use crate::state::notify_watchdog;
 #[cfg(windows)]
 use std::os::windows::process::CommandExt;
 
@@ -73,26 +74,14 @@ pub fn start(
         .map_err(|e| format!("spawn frpc failed: {e} (exe: {exe_path}, cfg: {cfg_path})"))?;
     let pid = child.id();
 
-    // 通知 watchdog
-    if let Some(mut tx) = app
-        .state::<FrpcProcState>()
-        .watchdog
-        .lock()
-        .unwrap()
-        .as_ref()
-        .clone()
+    #[cfg(unix)]
     {
-        use std::io::Write;
-        #[cfg(unix)]
-        {
-            // 因为上面 pre_exec 里 setsid() 了，frpc 是新会话/进程组的组长：gpid == pid
-            let _ = writeln!(tx, "SET PG {pid}");
-        }
-        #[cfg(windows)]
-        {
-            // 没有 POSIX 组，发 PID 让 watchdog 用枚举子树的方式杀
-            let _ = writeln!(tx, "SET PID {pid}");
-        }
+        // 因为上面 pre_exec 里 setsid() 了，frpc 是新会话/进程组的组长：gpid == pid
+        let _ = notify_watchdog(app, format!("SET PG {pid}").into());
+    }
+    #[cfg(windows)]
+    {
+        let _ = notify_watchdog(app, format!("SET PID {pid}").into());
     }
 
     // 拿到输出管道
@@ -183,18 +172,7 @@ pub fn stop(app: &AppHandle, proc_state: &FrpcProcState) -> Result<(), String> {
     if let Some(ch) = opt.as_mut() {
         graceful_kill(ch)?;
     }
-    // ⬇️ 告诉 watchdog：当前没有需要托管的目标了
-    if let Some(mut tx) = app
-        .state::<FrpcProcState>()
-        .watchdog
-        .lock()
-        .unwrap()
-        .as_ref()
-        .clone()
-    {
-        use std::io::Write;
-        let _ = writeln!(tx, "CLEAR");
-    }
+    let _ = notify_watchdog(app, "CLEAR".into());
     Ok(())
 }
 

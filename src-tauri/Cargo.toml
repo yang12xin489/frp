@@ -4,19 +4,10 @@ version = "0.1.0"
 description = "A Tauri App"
 authors = ["you"]
 edition = "2021"
-default-run = "frpc-client"
 
 [lib]
 name = "frpc_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
-
-[[bin]]
-name = "frpc-client"
-path = "src/main.rs"
-
-[[bin]]
-name = "frp-client-watchdog"
-path = "src/bin/watchdog_main.rs"
 
 [profile.dev]
 incremental = true
@@ -38,6 +29,7 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 thiserror = "2.0.16"
 tauri-plugin-store = "2"
+tauri-plugin-shell = "2.3.1"
 reqwest = { version = "0.12.23", features = ["json", "stream"] }
 zip = "5.1.1"
 toml = "0.9.7"
@@ -47,14 +39,4 @@ regex = "1.11.2"
 futures-util = "0.3.31"
 tokio = "1.47.1"
 chrono = "0.4.42"
-
-# Unix 需要组信号
 libc = "0.2"
-
-# Windows 需要枚举进程树 + TerminateProcess（不用 Job）
-windows-sys = { version = "0.61.0", features = [
-    "Win32_System_Diagnostics_ToolHelp",
-    "Win32_System_Threading",
-    "Win32_Foundation"
-] }
-anyhow = "1.0.100"

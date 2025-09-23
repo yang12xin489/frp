@@ -1,7 +1,7 @@
 use crate::domain::config::FrpcConfig;
 use serde_json::{Map, Value};
-use std::process::{Child, ChildStdin};
-use std::sync::{Arc, RwLock};
+use std::process::Child;
+use std::sync::{mpsc, Arc, RwLock};
 
 #[derive(Default)]
 pub struct Inner {
@@ -22,9 +22,23 @@ impl AppState {
 }
 
 use std::sync::Mutex;
+use tauri::{AppHandle, Manager};
+use tauri_plugin_shell::process::CommandChild;
 
 #[derive(Default)]
 pub struct FrpcProcState {
     pub child: Arc<Mutex<Option<Child>>>,
-    pub watchdog: Arc<Mutex<Option<ChildStdin>>>
+    pub watchdog: Arc<Mutex<Option<CommandChild>>>,
+    pub watchdog_tx: Mutex<Option<mpsc::Sender<String>>>,
+}
+
+pub fn notify_watchdog(app: &AppHandle, msg: String) -> Result<(), std::io::Error> {
+    let state: tauri::State<'_, FrpcProcState> = app.state();
+    {
+        let mut guard = state.watchdog.lock().unwrap();
+        if let Some(child) = guard.as_mut() {
+            let _ = child.write(msg.as_bytes());
+        }
+    }
+    Ok(())
 }

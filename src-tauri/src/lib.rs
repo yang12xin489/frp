@@ -24,7 +24,6 @@ pub mod services {
     pub mod config_service;
     pub mod runner;
     pub mod version_service;
-    pub mod watchdog_service;
 }
 mod api {
     pub mod config_api;
@@ -33,9 +32,9 @@ mod api {
     pub mod settings_api;
     pub mod versions_api;
 }
-
 #[cfg(target_os = "macos")]
 use runtime::ActivationPolicy;
+use tauri_plugin_shell::ShellExt;
 
 fn kill_child_if_any(st: &State<'_, FrpcProcState>) {
     if let Ok(mut g) = st.child.lock() {
@@ -117,28 +116,18 @@ pub fn run() {
                 })
                 .build(app)?;
 
-            let mut exe = std::env::current_exe().expect("current_exe");
-            exe.set_file_name(if cfg!(windows) {
-                "frp-client-watchdog.exe"
-            } else {
-                "frp-client-watchdog"
-            });
-            let mut child = std::process::Command::new(&exe)
-                .stdin(std::process::Stdio::piped())
-                .stdout(std::process::Stdio::null())
-                .stderr(std::process::Stdio::null())
-                .spawn()
-                .map_err(|e| {
-                    anyhow::anyhow!("spawn reaper failed: {e} (path: {})", exe.display())
-                })?;
-
-            if let Some(tx) = child.stdin.take() {
-                *app.state::<FrpcProcState>().watchdog.lock().unwrap() = Some(tx);
-            }
+            let watchdog_command = app
+                .app_handle()
+                .shell()
+                .sidecar("frp-client-watchdog")
+                .unwrap();
+            let (_rx, child) = watchdog_command.spawn().expect("Failed to spawn sidecar");
+            *app.state::<FrpcProcState>().watchdog.lock().unwrap() = Some(child);
             Ok(())
         })
         .plugin(tauri_plugin_store::Builder::new().build())
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_shell::init())
         .manage(AppState::default())
         .manage(FrpcProcState::default())
         .invoke_handler(tauri::generate_handler![
