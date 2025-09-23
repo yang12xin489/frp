@@ -10,7 +10,7 @@ use std::{
     thread,
     time::Duration,
 };
-use tauri::{AppHandle, Emitter, Manager};
+use tauri::{AppHandle, Emitter};
 
 #[derive(Serialize, Clone, Debug)]
 pub struct ClosePayload {
