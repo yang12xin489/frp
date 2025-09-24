@@ -2,6 +2,7 @@ use crate::state::{AppState, FrpcProcState};
 use tauri::menu::{Menu, MenuItem};
 use tauri::tray::TrayIconBuilder;
 use tauri::{Manager, State, WindowEvent};
+use tauri_plugin_shell::ShellExt;
 
 mod errors;
 mod events;
@@ -33,8 +34,7 @@ mod api {
     pub mod versions_api;
 }
 #[cfg(target_os = "macos")]
-use runtime::ActivationPolicy;
-use tauri_plugin_shell::ShellExt;
+use tauri::ActivationPolicy;
 
 fn kill_child_if_any(st: &State<'_, FrpcProcState>) {
     if let Ok(mut g) = st.child.lock() {
@@ -72,12 +72,12 @@ pub fn run() {
         .setup(|app| {
             let state: State<AppState> = app.handle().state();
             services::config_service::loaded_from_store(&app.handle(), &state)?;
-            #[cfg(debug_assertions)]
-            {
-                let window = app.get_webview_window("main").unwrap();
-                window.open_devtools();
-                window.close_devtools();
-            }
+            // #[cfg(debug_assertions)]
+            // {
+            //     let window = app.get_webview_window("main").unwrap();
+            //     window.open_devtools();
+            //     window.close_devtools();
+            // }
 
             let show = MenuItem::with_id(app, "show", "显示主窗口", true, None::<&str>)?;
             let quit = MenuItem::with_id(app, "quit", "退出", true, None::<&str>)?;
@@ -116,11 +116,7 @@ pub fn run() {
                 })
                 .build(app)?;
 
-            let watchdog_command = app
-                .app_handle()
-                .shell()
-                .sidecar("frp-client-watchdog")
-                .unwrap();
+            let watchdog_command = app.app_handle().shell().sidecar("frpc-watchdog").unwrap();
             let (_rx, child) = watchdog_command.spawn().expect("Failed to spawn sidecar");
             *app.state::<FrpcProcState>().watchdog.lock().unwrap() = Some(child);
             Ok(())
@@ -153,5 +149,5 @@ pub fn run() {
             api::settings_api::get_setting,
         ])
         .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .expect("error while running frpc application");
 }

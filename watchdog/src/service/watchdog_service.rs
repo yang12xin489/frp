@@ -1,15 +1,6 @@
 use std::io::{BufRead, BufReader};
-
-#[cfg(unix)]
-fn kill_group(g_pid: i32) {
-    unsafe {
-        let _ = libc::kill(-g_pid, libc::SIGTERM);
-    }
-    thread::sleep(Duration::from_millis(300));
-    unsafe {
-        let _ = libc::kill(-g_pid, libc::SIGKILL);
-    }
-}
+use std::thread;
+use std::time::Duration;
 
 #[cfg(unix)]
 fn kill_pid(pid: i32) {
@@ -92,8 +83,6 @@ pub fn run() -> ! {
     #[derive(Clone, Copy)]
     enum Target {
         None,
-        #[cfg(unix)]
-        GPid(i64),
         Pid(i64),
     }
     let mut tgt = Target::None;
@@ -107,7 +96,6 @@ pub fn run() -> ! {
             match tgt {
                 Target::None => {}
                 #[cfg(unix)]
-                Target::GPid(x) => kill_group(x as i32),
                 Target::Pid(x) => {
                     #[cfg(unix)]
                     {
@@ -129,12 +117,6 @@ pub fn run() -> ! {
 
         let mut it = cmd.split_whitespace();
         match (it.next(), it.next(), it.next()) {
-            #[cfg(unix)]
-            (Some("SET"), Some("PG"), Some(pid)) => {
-                if let Ok(v) = pid.parse::<i64>() {
-                    tgt = Target::GPid(v);
-                }
-            }
             (Some("SET"), Some("PID"), Some(pid)) => {
                 if let Ok(v) = pid.parse::<i64>() {
                     tgt = Target::Pid(v);

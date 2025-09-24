@@ -1,12 +1,12 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "frpc-client",
+  "productName": "frpc",
   "version": "0.1.0",
-  "identifier": "frp-client",
+  "identifier": "frpc",
   "build": {
     "devUrl": "http://localhost:1420",
-    "beforeDevCommand": "cross-env CARGO_TARGET_DIR=src-tauri/target cargo build --manifest-path watchdog/Cargo.toml && node scripts/prepare-sidecar.js && pnpm dev",
-    "beforeBuildCommand": "cross-env CARGO_TARGET_DIR=src-tauri/target cargo build --manifest-path watchdog/Cargo.toml --release && node scripts/prepare-sidecar.js && pnpm build",
+    "beforeDevCommand": "cargo build --manifest-path watchdog/Cargo.toml && node scripts/prepare-sidecar.js && pnpm dev",
+    "beforeBuildCommand": "cargo build --manifest-path watchdog/Cargo.toml --release && node scripts/prepare-sidecar.js && pnpm build",
     "frontendDist": "../dist",
     "removeUnusedCommands": true
   },
@@ -40,11 +40,14 @@
     "active": true,
     "targets": "all",
     "icon": [
-      "icons/icon.png",
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
       "icons/icon.ico"
     ],
     "externalBin": [
-      "target/frp-client-watchdog"
+      "../target/frpc-watchdog"
     ]
   }
 }

@@ -1,4 +1,3 @@
-// services/runner.rs
 use crate::{
     events::{EVT_CLOSE, EVT_LOG_ERROR, EVT_LOG_STDERR, EVT_LOG_STDOUT},
     state::FrpcProcState,
@@ -6,7 +5,7 @@ use crate::{
 use serde::Serialize;
 use std::{
     io::{BufRead, BufReader},
-    process::{Child, Command, Stdio},
+    process::{Command, Stdio},
     thread,
     time::Duration,
 };
@@ -24,7 +23,6 @@ use std::os::windows::process::CommandExt;
 #[cfg(windows)]
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
-/// 启动 frpc 子进程（带 stdout/stderr 事件、退出事件）
 pub fn start(
     app: &AppHandle,
     proc_state: &FrpcProcState,
@@ -53,36 +51,12 @@ pub fn start(
         cmd.creation_flags(CREATE_NO_WINDOW);
     }
 
-    // Unix：fork/exec 前 setsid() → 新会话/新进程组
-    #[cfg(unix)]
-    {
-        use std::os::unix::process::CommandExt;
-        unsafe {
-            cmd.pre_exec(|| {
-                // 失败也别 panic，交给上层；但通常不会失败
-                if libc::setsid() == -1 {
-                    // 返回 Err 会让 spawn 报错
-                    return Err(std::io::Error::last_os_error());
-                }
-                Ok(())
-            });
-        }
-    }
-
     let mut child = cmd
         .spawn()
         .map_err(|e| format!("spawn frpc failed: {e} (exe: {exe_path}, cfg: {cfg_path})"))?;
     let pid = child.id();
 
-    #[cfg(unix)]
-    {
-        // 因为上面 pre_exec 里 setsid() 了，frpc 是新会话/进程组的组长：gpid == pid
-        let _ = notify_watchdog(app, format!("SET PG {pid}").into());
-    }
-    #[cfg(windows)]
-    {
-        let _ = notify_watchdog(app, format!("SET PID {pid}").into());
-    }
+    let _ = notify_watchdog(app, format!("SET PID {pid}").into());
 
     // 拿到输出管道
     let stdout = child.stdout.take();
@@ -166,11 +140,10 @@ pub fn start(
     Ok(pid)
 }
 
-/// 优雅终止（Unix: 给进程组发 SIGTERM→超时 SIGKILL；Windows: 直接 kill）
 pub fn stop(app: &AppHandle, proc_state: &FrpcProcState) -> Result<(), String> {
-    let mut opt = proc_state.child.lock().map_err(|e| e.to_string())?;
-    if let Some(ch) = opt.as_mut() {
-        graceful_kill(ch)?;
+    let mut g = proc_state.child.lock().map_err(|e| e.to_string())?;
+    if let Some(ch) = g.as_mut() {
+        ch.kill().map_err(|e| format!("kill frpc failed: {e}"))?;
     }
     let _ = notify_watchdog(app, "CLEAR".into());
     Ok(())
@@ -179,54 +152,4 @@ pub fn stop(app: &AppHandle, proc_state: &FrpcProcState) -> Result<(), String> {
 pub fn is_running(proc_state: &FrpcProcState) -> Result<bool, String> {
     let g = proc_state.child.lock().map_err(|e| e.to_string())?;
     Ok(g.is_some())
-}
-
-/* ---------------- 内部：跨平台终止 ---------------- */
-
-fn graceful_kill(child: &mut Child) -> Result<(), String> {
-    #[cfg(unix)]
-    {
-        // 对整个进程组发信号（负 pid）
-        unsafe {
-            let pid = child.id() as i32;
-            let _ = libc::kill(-pid, libc::SIGTERM);
-        }
-
-        // 最多等 2s
-        if wait_with_timeout(child, Duration::from_millis(2000))? {
-            return Ok(());
-        }
-
-        // 还没退出 → SIGKILL
-        unsafe {
-            let pid = child.id() as i32;
-            let _ = libc::kill(-pid, libc::SIGKILL);
-        }
-        let _ = child.wait();
-        return Ok(());
-    }
-
-    #[cfg(not(unix))]
-    {
-        child.kill().map_err(|e| format!("kill frpc failed: {e}"))?;
-        let _ = child.wait();
-        Ok(())
-    }
-}
-
-#[cfg(unix)]
-fn wait_with_timeout(child: &mut Child, timeout: Duration) -> Result<bool, String> {
-    let start = Instant::now();
-    loop {
-        match child.try_wait() {
-            Ok(Some(_st)) => return Ok(true),
-            Ok(None) => {
-                if start.elapsed() >= timeout {
-                    return Ok(false);
-                }
-                thread::sleep(Duration::from_millis(50));
-            }
-            Err(e) => return Err(format!("try_wait failed: {e}")),
-        }
-    }
 }

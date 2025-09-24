@@ -1,9 +1,10 @@
 [package]
-name = "frpc-client"
+name = "frpc"
 version = "0.1.0"
 description = "A Tauri App"
 authors = ["you"]
 edition = "2021"
+build = "build.rs"
 
 [lib]
 name = "frpc_lib"
