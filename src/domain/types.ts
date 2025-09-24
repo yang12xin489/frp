@@ -8,7 +8,6 @@ export enum ProxyType {
     XTCP = 'xtcp',
 }
 
-
 export enum AuthType { TOKEN = 'token', OIDC = 'oidc' }
 
 export enum DomainType { SUB = 'sub', CUSTOM = 'custom' }

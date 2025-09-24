@@ -104,7 +104,7 @@ pub struct HttpProxy {
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
-struct HttpProxyExport {
+pub struct HttpProxyExport {
     #[serde(flatten)]
     pub common: ProxyCommonExport,
     pub subdomain: String,

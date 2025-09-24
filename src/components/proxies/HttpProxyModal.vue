@@ -47,6 +47,7 @@ import {DomainType, type HttpProxy, ProxyType} from '@/domain/types'
 import {saveProxy} from '@/api/config'
 
 const defaultModel: HttpProxy = {
+  id: '',
   name: '',
   type: ProxyType.HTTP,
   enable: false,

@@ -1,7 +1,8 @@
 use crate::state::{AppState, FrpcProcState};
+use std::sync::atomic::{AtomicBool, Ordering};
 use tauri::menu::{Menu, MenuItem};
-use tauri::tray::TrayIconBuilder;
-use tauri::{Manager, State, WindowEvent};
+use tauri::tray::{MouseButton, TrayIconBuilder, TrayIconEvent};
+use tauri::{Manager, RunEvent, State, WebviewUrl, WebviewWindowBuilder, WindowEvent};
 use tauri_plugin_shell::ShellExt;
 
 mod errors;
@@ -39,7 +40,6 @@ use tauri::ActivationPolicy;
 fn kill_child_if_any(st: &State<'_, FrpcProcState>) {
     if let Ok(mut g) = st.child.lock() {
         if let Some(ch) = g.as_mut() {
-            // 强制兜底一把（不会重复触发 close 事件没关系）
             let _ = ch.kill();
             let _ = ch.wait();
         }
@@ -47,37 +47,61 @@ fn kill_child_if_any(st: &State<'_, FrpcProcState>) {
     }
 }
 
+fn show_window(app: &tauri::AppHandle) {
+    #[cfg(target_os = "macos")]
+    let _ = app.set_activation_policy(tauri::ActivationPolicy::Regular);
+
+    if let Some(win) = app.get_webview_window("main") {
+        #[cfg(not(target_os = "macos"))]
+        let _ = win.set_skip_taskbar(false); // 之前隐藏过任务栏的话
+        let _ = win.show();
+        let _ = win.unminimize();
+        let _ = win.set_focus();
+    } else {
+        if let Ok(win) =
+            WebviewWindowBuilder::new(app, "main", WebviewUrl::App("index.html".into()))
+                .title("")
+                .visible(false)
+                .center()
+                .build()
+        {
+            #[cfg(not(target_os = "macos"))]
+            let _ = win.set_skip_taskbar(false);
+            let _ = win.show();
+            let _ = win.set_focus();
+        }
+    }
+}
+
+fn hide_window(win: &tauri::window::Window) {
+    let _ = win.hide();
+
+    #[cfg(target_os = "macos")]
+    {
+        let _ = win
+            .app_handle()
+            .set_activation_policy(ActivationPolicy::Accessory);
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = win.set_skip_taskbar(true);
+    }
+}
+
+static ALLOW_EXIT: AtomicBool = AtomicBool::new(false);
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .on_window_event(|window, event| {
-            if let WindowEvent::CloseRequested { api, .. } = event {
-                api.prevent_close(); // 不退出应用
-                let _ = window.hide(); // 仅隐藏窗口
-
-                #[cfg(target_os = "macos")]
-                {
-                    let _ = window
-                        .app_handle()
-                        .set_activation_policy(ActivationPolicy::Accessory);
-                }
-
-                // —— Windows/Linux: 从任务栏移除
-                #[cfg(not(target_os = "macos"))]
-                {
-                    let _ = window.set_skip_taskbar(true);
-                }
+            if let WindowEvent::CloseRequested { .. } = event {
+                hide_window(window)
             }
         })
         .setup(|app| {
             let state: State<AppState> = app.handle().state();
             services::config_service::loaded_from_store(&app.handle(), &state)?;
-            // #[cfg(debug_assertions)]
-            // {
-            //     let window = app.get_webview_window("main").unwrap();
-            //     window.open_devtools();
-            //     window.close_devtools();
-            // }
 
             let show = MenuItem::with_id(app, "show", "显示主窗口", true, None::<&str>)?;
             let quit = MenuItem::with_id(app, "quit", "退出", true, None::<&str>)?;
@@ -86,30 +110,20 @@ pub fn run() {
             TrayIconBuilder::new()
                 .icon(app.default_window_icon().unwrap().clone())
                 .menu(&menu)
-                .show_menu_on_left_click(true)
-                .on_menu_event(|app, event| match event.id.as_ref() {
-                    "show" => {
-                        #[cfg(target_os = "macos")]
-                        {
-                            let _ = app.set_activation_policy(ActivationPolicy::Regular);
-                        }
-
-                        if let Some(win) = app.get_webview_window("main") {
-                            #[allow(unused_must_use)]
-                            {
-                                #[cfg(not(target_os = "macos"))]
-                                win.set_skip_taskbar(false); // Windows/Linux 恢复任务栏
-
-                                win.show();
-                                win.unminimize();
-                                win.set_focus();
-                            }
-                        }
+                .show_menu_on_left_click(false)
+                .on_tray_icon_event(|tray, event| match event {
+                    TrayIconEvent::Click { button, .. } if button == MouseButton::Left => {
+                        show_window(tray.app_handle());
                     }
+                    _ => {}
+                })
+                .on_menu_event(|app, event| match event.id.as_ref() {
+                    "show" => show_window(app),
                     "quit" => {
                         if let Some(st) = app.try_state::<FrpcProcState>() {
                             kill_child_if_any(&st);
                         }
+                        ALLOW_EXIT.store(true, Ordering::SeqCst);
                         app.exit(0)
                     }
                     _ => {}
@@ -117,7 +131,7 @@ pub fn run() {
                 .build(app)?;
 
             let watchdog_command = app.app_handle().shell().sidecar("frpc-watchdog").unwrap();
-            let (_rx, child) = watchdog_command.spawn().expect("Failed to spawn sidecar");
+            let (_rx, child) = watchdog_command.spawn().expect("Failed to spawn watchdog");
             *app.state::<FrpcProcState>().watchdog.lock().unwrap() = Some(child);
             Ok(())
         })
@@ -146,6 +160,14 @@ pub fn run() {
             api::settings_api::set_setting,
             api::settings_api::get_setting,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running frpc application");
+        .build(tauri::generate_context!())
+        .expect("failed to build frpc app")
+        .run(|_app, event| match event {
+            RunEvent::ExitRequested { api, .. } => {
+                if !ALLOW_EXIT.load(Ordering::SeqCst) {
+                    api.prevent_exit();
+                }
+            }
+            _ => {}
+        });
 }
