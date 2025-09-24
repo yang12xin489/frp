@@ -43,6 +43,13 @@ impl DerefMut for Proxy {
     }
 }
 
+#[derive(Serialize)]
+#[serde(tag = "type", rename_all = "lowercase")]
+pub enum ProxyExport {
+    Http(HttpProxyExport),
+    Https(HttpsProxyExport),
+}
+
 // 生成默认 id
 fn gen_id() -> String {
     Uuid::new_v4().to_string()
@@ -74,6 +81,14 @@ pub struct ProxyCommon {
     pub local_port: u16,
 }
 
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProxyCommonExport {
+    name: String,
+    local_ip: String,
+    local_port: u16,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct HttpProxy {
@@ -87,15 +102,53 @@ pub struct HttpProxy {
     pub switch: HttpSwitch,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct HttpsProxy {
+struct HttpProxyExport {
     #[serde(flatten)]
-    pub common: ProxyCommon,
+    pub common: ProxyCommonExport,
     pub subdomain: String,
     pub custom_domains: Vec<String>,
     pub locations: Vec<String>,
     pub http_user: String,
     pub http_password: String,
-    pub switch: HttpSwitch,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct HttpsProxy {
+    #[serde(flatten)]
+    pub common: ProxyCommon,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HttpsProxyExport {
+    #[serde(flatten)]
+    common: ProxyCommonExport,
+}
+
+pub fn to_proxy_export(p: &Proxy) -> Option<ProxyExport> {
+    use crate::domain::proxy::Proxy as P;
+    match p {
+        P::Http(h) => Some(ProxyExport::Http(HttpProxyExport {
+            common: ProxyCommonExport {
+                name: h.common.name.clone(),
+                local_ip: h.common.local_ip.clone(),
+                local_port: h.common.local_port,
+            },
+            subdomain: h.subdomain.clone(),
+            custom_domains: h.custom_domains.clone(),
+            locations: h.locations.clone(),
+            http_user: h.http_user.clone(),
+            http_password: h.http_password.clone(),
+        })),
+        P::Https(h) => Some(ProxyExport::Https(HttpsProxyExport {
+            common: ProxyCommonExport {
+                name: h.common.name.clone(),
+                local_ip: h.common.local_ip.clone(),
+                local_port: h.common.local_port,
+            },
+        })),
+    }
 }

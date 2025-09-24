@@ -36,7 +36,7 @@ pub fn notify_watchdog(app: &AppHandle, msg: String) -> Result<(), std::io::Erro
     {
         let mut guard = state.watchdog.lock().unwrap();
         if let Some(child) = guard.as_mut() {
-            let _ = child.write(msg.as_bytes());
+            let _ = child.write((msg + "\n").as_bytes());
         }
     }
     Ok(())

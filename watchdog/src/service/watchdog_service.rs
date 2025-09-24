@@ -95,7 +95,6 @@ pub fn run() -> ! {
             // EOF：父进程已死亡，执行清理
             match tgt {
                 Target::None => {}
-                #[cfg(unix)]
                 Target::Pid(x) => {
                     #[cfg(unix)]
                     {

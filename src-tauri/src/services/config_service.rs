@@ -54,70 +54,30 @@ pub fn save_now(app: &AppHandle, state: &AppState) -> Result<()> {
     Ok(())
 }
 
-pub fn export_toml_string(state: &AppState) -> Result<String> {
-    use serde_json::Value as JV;
-
-    // 拿到配置
-    let cfg = state.read().config.clone();
-
-    // 1) 先把整个配置转成 serde_json::Value
-    let mut root = serde_json::to_value(&cfg)?;
-
-
-    // 2) 处理 proxies：只保留启用的，并移除不需要的键
-    if let Some(arr) = obj.get_mut("proxies").and_then(|x| x.as_array_mut()) {
-        arr.retain(|p| p.get("enable").and_then(|b| b.as_bool()) == Some(true));
-
-        for p in arr {
-            if let Some(m) = p.as_object_mut() {
-                m.remove("id");
-                m.remove("enable");
-                m.remove("switch");
-            }
-        }
-        // 如果过滤后为空就删掉整个键（可选）
-        if arr.is_empty() {
-            obj.remove("proxies");
-        }
-    }
-
-    // 3) 根据 switch 删掉 auth / webServer（注意 key 是驼峰：webServer）
-    if let Some(sw) = obj.get("switch").and_then(|v| v.as_object()) {
-        if sw.get("auth").and_then(|v| v.as_bool()) != Some(true) {
-            obj.remove("auth");
-        }
-        if sw.get("webServer").and_then(|v| v.as_bool()) != Some(true) {
-            obj.remove("webServer");
-        }
-    }
-
-    // 如果最终文件不需要写出 switch，本行放开
-    // obj.remove("switch");
-
-    // 4) 直接把 root（就是 serde_json::Value）序列化为 TOML 字符串
-    // serde 的 toml 库支持对任意 Serialize 做 to_string
-    Ok(toml::to_string_pretty(&root)?)
-}
-
 pub fn export_toml_to_file(app: &AppHandle, state: &AppState) -> Result<String> {
-    let toml = export_toml_string(state)?;
+    let cfg = state.read().config.clone();
+    let dto = cfg.to_export();
+    let toml_str = toml::to_string_pretty(&dto)?;
     let dir = app_config_dir(app);
     std::fs::create_dir_all(&dir)?;
     let path = dir.join(CONFIG_TOML_FILE);
-    std::fs::write(&path, toml)?;
+    std::fs::write(&path, toml_str)?;
     Ok(path.display().to_string())
 }
 
-pub fn save_server_config(app: &AppHandle, state: &AppState, partial: FrpcConfig) -> Result<()> {
-    let mut g = state.write();
-    let old = &mut g.config;
-    if !partial.server_addr.is_empty() {
-        old.server_addr = partial.server_addr;
-    }
-    old.server_port = partial.server_port;
-    old.auth = partial.auth;
-    old.switch = partial.switch;
-    old.web_server = partial.web_server;
+pub fn save_server_config(
+    app: &AppHandle,
+    state: &AppState,
+    frpc_config: FrpcConfig,
+) -> Result<()> {
+    {
+        let mut g = state.write();
+        let old_proxies = std::mem::take(&mut g.config.proxies);
+        g.config = FrpcConfig {
+            proxies: old_proxies,
+            ..frpc_config
+        };
+    };
     save_now(app, state)?;
     Ok(())
 }
