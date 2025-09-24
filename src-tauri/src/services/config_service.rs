@@ -56,57 +56,47 @@ pub fn save_now(app: &AppHandle, state: &AppState) -> Result<()> {
 
 pub fn export_toml_string(state: &AppState) -> Result<String> {
     use serde_json::Value as JV;
+
+    // 拿到配置
     let cfg = state.read().config.clone();
 
-    let method_str = serde_json::to_value(&cfg.auth.method)
-        .ok()
-        .and_then(|v| v.as_str().map(|s| s.to_string()))
-        .unwrap_or_default();
+    // 1) 先把整个配置转成 serde_json::Value
+    let mut root = serde_json::to_value(&cfg)?;
 
-    let mut root = serde_json::Map::new();
-    root.insert("serverAddr".into(), JV::String(cfg.server_addr));
-    root.insert("serverPort".into(), JV::Number(cfg.server_port.into()));
 
-    let mut web_map = serde_json::Map::new();
-    web_map.insert("addr".into(), JV::String(cfg.web_server.addr));
-    web_map.insert("port".into(), JV::Number(cfg.web_server.port.into()));
-    if cfg.switch.web_server {
-        if !cfg.web_server.user.is_empty() {
-            web_map.insert("user".into(), JV::String(cfg.web_server.user));
+    // 2) 处理 proxies：只保留启用的，并移除不需要的键
+    if let Some(arr) = obj.get_mut("proxies").and_then(|x| x.as_array_mut()) {
+        arr.retain(|p| p.get("enable").and_then(|b| b.as_bool()) == Some(true));
+
+        for p in arr {
+            if let Some(m) = p.as_object_mut() {
+                m.remove("id");
+                m.remove("enable");
+                m.remove("switch");
+            }
         }
-        if !cfg.web_server.password.is_empty() {
-            web_map.insert("password".into(), JV::String(cfg.web_server.password));
+        // 如果过滤后为空就删掉整个键（可选）
+        if arr.is_empty() {
+            obj.remove("proxies");
         }
     }
-    root.insert("webServer".into(), JV::Object(web_map));
 
-    if cfg.switch.auth {
-        let mut a_map = serde_json::Map::new();
-        a_map.insert("method".into(), JV::String(method_str));
-        a_map.insert("token".into(), JV::String(cfg.auth.token));
-        root.insert("auth".into(), JV::Object(a_map));
+    // 3) 根据 switch 删掉 auth / webServer（注意 key 是驼峰：webServer）
+    if let Some(sw) = obj.get("switch").and_then(|v| v.as_object()) {
+        if sw.get("auth").and_then(|v| v.as_bool()) != Some(true) {
+            obj.remove("auth");
+        }
+        if sw.get("webServer").and_then(|v| v.as_bool()) != Some(true) {
+            obj.remove("webServer");
+        }
     }
 
-    if !cfg.proxies.is_empty() {
-        let arr: Vec<JV> = cfg
-            .proxies
-            .iter()
-            .filter(|p| p.enable)
-            .map(|p| {
-                let mut v = serde_json::to_value(p).unwrap_or(JV::Null);
-                if let JV::Object(ref mut map) = v {
-                    map.remove("id");
-                    map.remove("enable");
-                    map.remove("switch");
-                }
-                v
-            })
-            .collect();
-        root.insert("proxies".into(), JV::Array(arr));
-    }
+    // 如果最终文件不需要写出 switch，本行放开
+    // obj.remove("switch");
 
-    let value = JV::Object(root);
-    Ok(toml::to_string(&value)?)
+    // 4) 直接把 root（就是 serde_json::Value）序列化为 TOML 字符串
+    // serde 的 toml 库支持对任意 Serialize 做 to_string
+    Ok(toml::to_string_pretty(&root)?)
 }
 
 pub fn export_toml_to_file(app: &AppHandle, state: &AppState) -> Result<String> {
