@@ -1,7 +1,7 @@
 <template>
   <n-modal v-model:show="showInner" :mask-closable="!loading" transform-origin="center" style="width: 90%; height: 80vh">
     <n-card :title="title" class="card-keep-header" :bordered="false" size="huge">
-      <n-scrollbar>
+      <n-scrollbar style="padding-right: 16px" trigger="none">
         <n-form ref="formRef" :model="model" :rules="rules" :label-placement="labelPlacement" :label-width="labelWidth" size="small">
           <slot :model="model" :form-ref="formRef"></slot>
         </n-form>

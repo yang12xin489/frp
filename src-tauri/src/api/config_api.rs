@@ -13,19 +13,8 @@ pub fn save_server(
     state: State<AppState>,
     partial: FrpcConfig,
 ) -> Result<(), String> {
-    svc::update_server_config(&state, partial);
-    svc::save_now(&app, &state)?;
+    svc::save_server_config(&app, &state, partial);
     Ok(())
-}
-
-#[tauri::command]
-pub fn export_toml(state: State<AppState>) -> Result<String, String> {
-    svc::export_toml_string(&state).map_err(Into::into)
-}
-
-#[tauri::command]
-pub fn export_toml_to_file(app: AppHandle, state: State<AppState>) -> Result<String, String> {
-    svc::export_toml_to_file(&app, &state).map_err(Into::into)
 }
 
 #[tauri::command]

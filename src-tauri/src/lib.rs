@@ -129,8 +129,6 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             api::config_api::load_config,
             api::config_api::save_server,
-            api::config_api::export_toml,
-            api::config_api::export_toml_to_file,
             api::config_api::save_now,
             api::proxies_api::save_proxy,
             api::proxies_api::remove_proxy,

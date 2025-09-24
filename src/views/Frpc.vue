@@ -14,7 +14,7 @@
 <script setup lang="ts">
 import LogPanel from '@/components/frpc/LogPanel.vue'
 import {useFrpcStore} from '@/stores/useFrpcStore'
-import {exportTomlToFile, startFrpc, stopFrpc} from '@/api/frpc'
+import {startFrpc, stopFrpc} from '@/api/frpc'
 import {useMessage} from 'naive-ui'
 import {computed, onMounted, ref} from 'vue'
 import {getActiveVersion} from "@/api/frpVersions.ts";
@@ -51,12 +51,11 @@ async function startOrStop() {
   try {
     if (!frpc.running) {
       frpc.clear()
-      const cfgPath = await exportTomlToFile()
       if (!ver.value?.exePath) {
         message.warning('请先在“版本管理”下载并激活一个 frp 版本');
         return
       }
-      await startFrpc(ver.value.exePath, cfgPath)
+      await startFrpc()
       frpc.running = true
       message.success('frpc 已启动')
     } else {

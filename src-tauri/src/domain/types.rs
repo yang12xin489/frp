@@ -8,18 +8,6 @@ pub enum AuthType {
     Oidc,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum ProxyType {
-    Http,
-    Https,
-    Tcp,
-    Udp,
-    STcp,
-    SUdp,
-    XTcp,
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "lowercase")]
 pub enum DomainType {

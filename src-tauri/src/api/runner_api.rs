@@ -1,14 +1,13 @@
-use crate::state::FrpcProcState;
+use crate::state::{AppState, FrpcProcState};
 use tauri::{AppHandle, State};
 
 #[tauri::command]
 pub async fn start_frpc(
     app: AppHandle,
-    state: State<'_, FrpcProcState>,
-    exe_path: String,
-    cfg_path: String,
+    frpc_proc_state: State<'_, FrpcProcState>,
+    state: State<'_, AppState>,
 ) -> Result<u32, String> {
-    crate::services::runner::start(&app, &state, &exe_path, &cfg_path)
+    crate::services::runner::start(&app, &state, &frpc_proc_state)
 }
 
 #[tauri::command]

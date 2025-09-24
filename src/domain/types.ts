@@ -14,8 +14,12 @@ export enum AuthType { TOKEN = 'token', OIDC = 'oidc' }
 export enum DomainType { SUB = 'sub', CUSTOM = 'custom' }
 
 export interface Proxy {
+    id: string;
     name: string;
     type: ProxyType
+    enable: boolean
+    localIP: string
+    localPort: number
 }
 
 export interface HttpSwitch {
@@ -24,8 +28,6 @@ export interface HttpSwitch {
 }
 
 export interface HttpProxy extends Proxy {
-    localIP: string
-    localPort: number
     subdomain: string
     customDomains: string[]
     locations: string[]

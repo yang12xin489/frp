@@ -6,9 +6,9 @@
         <n-button type="success" size="small" :loading="saving" @click="onSave">保存</n-button>
       </n-space>
     </template>
-    <n-scrollbar>
+    <n-scrollbar style="padding-right: 16px">
       <n-form ref="formRef" :model="form" label-placement="left" size="small" label-width="80px">
-        <n-divider title-placement="left" class="margin0">服务器配置</n-divider>
+        <n-divider title-placement="left">服务器配置</n-divider>
         <n-form-item label="地址">
           <n-input v-model:value="form.serverAddr" placeholder="127.0.0.1" clearable/>
         </n-form-item>
@@ -112,9 +112,5 @@ async function onReset() {
 .card-keep-header :deep(.n-card__content) {
   flex: 1 1 0;
   overflow: hidden;
-}
-
-.margin0 {
-  margin-top: 0;
 }
 </style>

@@ -14,8 +14,8 @@ export const useProxiesStore = defineStore('proxies', {
             await saveProxy(p);
             await this.fetch()
         },
-        async remove(name: string, type: string) {
-            await removeProxy(name, type as any);
+        async remove(name: string) {
+            await removeProxy(name);
             await this.fetch()
         },
     },

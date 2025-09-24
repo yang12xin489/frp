@@ -23,8 +23,7 @@ pub fn loaded_from_store(app: &AppHandle, state: &AppState) -> Result<()> {
     }
 
     // 未加载：先做 IO（不持锁）
-    let st = store(app, STORE_FILE)
-        .map_err(|e| crate::errors::AppError::Store(e.to_string()))?;
+    let st = store(app, STORE_FILE).map_err(|e| crate::errors::AppError::Store(e.to_string()))?;
     let cfg_val: Option<Value> = st.get(CONFIG_KEY);
     let cfg: FrpcConfig = cfg_val
         .map(|json| serde_json::from_value(json).unwrap_or_default())
@@ -40,10 +39,7 @@ pub fn loaded_from_store(app: &AppHandle, state: &AppState) -> Result<()> {
         let mut g = state.write();
         g.config = cfg;
         g.settings = settings_obj;
-        g.settings.insert(
-            LOADED_FLAG_KEY.into(),
-            Value::Bool(true),
-        );
+        g.settings.insert(LOADED_FLAG_KEY.into(), Value::Bool(true));
     }
     Ok(())
 }
@@ -95,9 +91,12 @@ pub fn export_toml_string(state: &AppState) -> Result<String> {
         let arr: Vec<JV> = cfg
             .proxies
             .iter()
+            .filter(|p| p.enable)
             .map(|p| {
                 let mut v = serde_json::to_value(p).unwrap_or(JV::Null);
                 if let JV::Object(ref mut map) = v {
+                    map.remove("id");
+                    map.remove("enable");
                     map.remove("switch");
                 }
                 v
@@ -119,7 +118,7 @@ pub fn export_toml_to_file(app: &AppHandle, state: &AppState) -> Result<String> 
     Ok(path.display().to_string())
 }
 
-pub fn update_server_config(state: &AppState, partial: FrpcConfig) {
+pub fn save_server_config(app: &AppHandle, state: &AppState, partial: FrpcConfig) -> Result<()> {
     let mut g = state.write();
     let old = &mut g.config;
     if !partial.server_addr.is_empty() {
@@ -129,4 +128,6 @@ pub fn update_server_config(state: &AppState, partial: FrpcConfig) {
     old.auth = partial.auth;
     old.switch = partial.switch;
     old.web_server = partial.web_server;
+    save_now(app, state)?;
+    Ok(())
 }

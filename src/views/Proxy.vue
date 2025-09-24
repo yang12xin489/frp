@@ -4,11 +4,11 @@
       <n-button type="success" @click="open">添加</n-button>
     </template>
     <template #default>
-      <n-card hoverable embedded v-for="proxy in store.proxies as HttpProxy[]" :key="proxy.name">
+      <n-card hoverable embedded v-for="proxy in store.proxies" :key="proxy.id">
         <template #header>
           <n-flex justify="space-between" align="center">
             <n-tag :bordered="false" type="success">{{ proxy.type }}</n-tag>
-            <n-switch/>
+            <n-switch :value="proxy.enable" @update:value="enableSwitch(proxy)"/>
           </n-flex>
         </template>
         <n-flex justify="space-between" :vertical="true">
@@ -29,14 +29,14 @@
       </n-card>
     </template>
   </xin-grid>
-  <proxy-editor v-model:visible="show" :initial="preset" @callback="callback"/>
+  <http-proxy-modal v-model:visible="show" :initial="preset" @callback="callback"/>
 </template>
 <script setup lang="ts">
-import {onMounted, ref, nextTick} from 'vue'
+import {nextTick, onMounted, ref} from 'vue'
 import {useProxiesStore} from '@/stores/useProxiesStore'
-import type {HttpProxy, Proxy} from '@/domain/types'
+import type {Proxy} from '@/domain/types'
 import XinGrid from "@/components/common/XinGrid.vue";
-import ProxyEditor from "@/components/proxies/ProxyEditor.vue";
+import HttpProxyModal from "@/components/proxies/HttpProxyModal.vue";
 
 const store = useProxiesStore()
 const show = ref(false)
@@ -57,7 +57,7 @@ function onEdit(p: Proxy) {
 }
 
 async function onDelete(p: Proxy) {
-  await store.remove(p.name, p.type as any);
+  await store.remove(p.id);
   await refresh()
 }
 
@@ -73,4 +73,11 @@ async function callback() {
 onMounted(() => {
   refresh()
 })
+
+function enableSwitch(v: Proxy) {
+  store.addOrUpdate({
+    ...v,
+    enable: !v.enable
+  })
+}
 </script>

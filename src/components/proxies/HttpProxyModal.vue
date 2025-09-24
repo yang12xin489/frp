@@ -49,6 +49,7 @@ import {saveProxy} from '@/api/config'
 const defaultModel: HttpProxy = {
   name: '',
   type: ProxyType.HTTP,
+  enable: false,
   localIP: '127.0.0.1',
   localPort: 8080,
   subdomain: '',
