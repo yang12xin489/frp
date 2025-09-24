@@ -13,7 +13,7 @@ pub fn save_server(
     state: State<AppState>,
     partial: FrpcConfig,
 ) -> Result<(), String> {
-    svc::save_server_config(&app, &state, partial);
+    svc::save_server_config(&app, &state, partial).expect("TODO: panic message");
     Ok(())
 }
 
