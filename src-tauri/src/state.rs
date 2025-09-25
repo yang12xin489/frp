@@ -25,12 +25,14 @@ use crate::services::local_proxy::ProxySpec;
 use std::sync::Mutex;
 use tauri::{AppHandle, Manager};
 use tauri_plugin_shell::process::CommandChild;
+use tokio::task::JoinHandle;
 
 #[derive(Default)]
 pub struct FrpcProcState {
     pub child: Arc<Mutex<Option<Child>>>,
     pub watchdog: Arc<Mutex<Option<CommandChild>>>,
     pub proxy_specs: Arc<Mutex<Vec<ProxySpec>>>,
+    pub shim_tasks: Mutex<Vec<JoinHandle<()>>>,
 }
 
 pub fn notify_watchdog(app: &AppHandle, msg: String) -> Result<(), std::io::Error> {

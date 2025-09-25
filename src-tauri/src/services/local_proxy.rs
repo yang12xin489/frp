@@ -11,9 +11,10 @@ use std::{
     time::Duration,
 };
 use tauri::{AppHandle, Emitter};
+use tokio::task::JoinHandle;
 use tokio::{
     io,
-    io::{AsyncRead, AsyncReadExt, AsyncWrite, ReadBuf},
+    io::{AsyncRead, AsyncWrite, ReadBuf},
     net::{TcpListener, TcpStream},
     time::{interval, MissedTickBehavior},
 };
@@ -25,7 +26,7 @@ pub struct ProxySpec {
 }
 
 #[derive(Clone, Default)]
-struct ProxyStats {
+pub struct ProxyStats {
     up_total: Arc<AtomicU64>,
     down_total: Arc<AtomicU64>,
 }
@@ -53,7 +54,7 @@ impl<T: AsyncRead + Unpin> AsyncRead for CountRead<T> {
         mut self: std::pin::Pin<&mut Self>,
         cx: &mut std::task::Context<'_>,
         buf: &mut ReadBuf<'_>,
-    ) -> std::task::Poll<std::io::Result<()>> {
+    ) -> std::task::Poll<Result<()>> {
         let before = buf.filled().len();
         let r = std::pin::Pin::new(&mut self.inner).poll_read(cx, buf);
         if let std::task::Poll::Ready(Ok(())) = &r {
@@ -72,7 +73,7 @@ impl<T: AsyncWrite + Unpin> AsyncWrite for CountRead<T> {
         mut self: std::pin::Pin<&mut Self>,
         cx: &mut std::task::Context<'_>,
         data: &[u8],
-    ) -> std::task::Poll<std::io::Result<usize>> {
+    ) -> std::task::Poll<Result<usize>> {
         std::pin::Pin::new(&mut self.inner).poll_write(cx, data)
     }
     #[inline]
@@ -86,7 +87,7 @@ impl<T: AsyncWrite + Unpin> AsyncWrite for CountRead<T> {
     fn poll_shutdown(
         mut self: std::pin::Pin<&mut Self>,
         cx: &mut std::task::Context<'_>,
-    ) -> std::task::Poll<std::io::Result<()>> {
+    ) -> std::task::Poll<Result<()>> {
         std::pin::Pin::new(&mut self.inner).poll_shutdown(cx)
     }
 }
@@ -94,6 +95,15 @@ impl<T: AsyncWrite + Unpin> AsyncWrite for CountRead<T> {
 /// ===================== 启动 shim + 采样 =====================
 
 pub async fn run_tcp_shim(app: AppHandle, proc_state: &FrpcProcState) -> Result<()> {
+    {
+        let mut g = proc_state
+            .shim_tasks
+            .lock()
+            .map_err(|_| Error::new(ErrorKind::Other, "lock shim_tasks"))?;
+        for h in g.drain(..) {
+            h.abort(); // 立即取消任务；监听 socket 会被 drop，从而释放端口
+        }
+    }
     // 取出 specs 所有权（短锁，不跨 await）
     let mut specs: Vec<ProxySpec> = {
         let mut g = proc_state
@@ -107,6 +117,7 @@ pub async fn run_tcp_shim(app: AppHandle, proc_state: &FrpcProcState) -> Result<
         return Ok(());
     }
 
+    let mut new_handles: Vec<JoinHandle<()>> = Vec::with_capacity(specs.len() + 1);
     // 记录 (id, stats) 供采样线程使用；同时为每个 spec 启动监听任务
     let mut view: Vec<(String, Arc<ProxyStats>)> = Vec::with_capacity(specs.len());
 
@@ -115,15 +126,16 @@ pub async fn run_tcp_shim(app: AppHandle, proc_state: &FrpcProcState) -> Result<
         view.push((spec.id.clone(), stats.clone()));
         let app2 = app.clone();
         let id_for_log = spec.id.clone();
-        tokio::spawn(async move {
+        let handle = tokio::spawn(async move {
             if let Err(e) = serve_one_proxy(app2, spec, stats).await {
                 eprintln!("[shim:{}] serve error: {e}", id_for_log);
             }
         });
+        new_handles.push(handle);
     }
 
     // 固定 200ms 上报：仅读原子计数，无锁
-    tokio::spawn({
+    let sampler = tokio::spawn({
         let app = app.clone();
         let view = Arc::new(view);
         async move {
@@ -157,6 +169,16 @@ pub async fn run_tcp_shim(app: AppHandle, proc_state: &FrpcProcState) -> Result<
             }
         }
     });
+
+    new_handles.push(sampler);
+
+    {
+        let mut g = proc_state
+            .shim_tasks
+            .lock()
+            .map_err(|_| Error::new(ErrorKind::Other, "lock shim_tasks"))?;
+        *g = new_handles;
+    }
 
     Ok(())
 }
@@ -199,8 +221,8 @@ async fn handle_conn(
     up_counter: Arc<AtomicU64>,
     down_counter: Arc<AtomicU64>,
 ) -> Result<()> {
-    let mut cli = cli;
-    let mut svr = TcpStream::connect(target).await?;
+    let cli = cli;
+    let svr = TcpStream::connect(target).await?;
 
     set_socket_opts(&cli);
     set_socket_opts(&svr);
