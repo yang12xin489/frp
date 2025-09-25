@@ -7,7 +7,7 @@ pub async fn start_frpc(
     frpc_proc_state: State<'_, FrpcProcState>,
     state: State<'_, AppState>,
 ) -> Result<u32, String> {
-    crate::services::runner::start(&app, &state, &frpc_proc_state)
+    crate::services::runner::start(&app, &state, &frpc_proc_state).await
 }
 
 #[tauri::command]

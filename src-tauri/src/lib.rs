@@ -24,6 +24,7 @@ mod infra {
 }
 pub mod services {
     pub mod config_service;
+    pub mod local_proxy;
     pub mod runner;
     pub mod version_service;
 }

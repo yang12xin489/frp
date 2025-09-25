@@ -21,11 +21,12 @@ use crate::services::version_service::get_active;
 use crate::state::{notify_watchdog, AppState};
 #[cfg(windows)]
 use std::os::windows::process::CommandExt;
+use crate::services::local_proxy::run_tcp_shim;
 
 #[cfg(windows)]
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
-pub fn start(app: &AppHandle, state: &AppState, proc_state: &FrpcProcState) -> Result<u32, String> {
+pub async fn start(app: &AppHandle, state: &AppState, proc_state: &FrpcProcState) -> Result<u32, String> {
     // 防重复
     {
         let g = proc_state.child.lock().map_err(|e| e.to_string())?;
@@ -35,7 +36,7 @@ pub fn start(app: &AppHandle, state: &AppState, proc_state: &FrpcProcState) -> R
     }
 
     let exe_path = get_active(state).unwrap().exe_path;
-    let cfg_path = export_toml_to_file(app, state)?;
+    let cfg_path = export_toml_to_file(app, state, proc_state)?;
 
     // 构建命令
     let mut cmd = Command::new(&exe_path);
@@ -57,6 +58,8 @@ pub fn start(app: &AppHandle, state: &AppState, proc_state: &FrpcProcState) -> R
     let pid = child.id();
 
     let _ = notify_watchdog(app, format!("SET PID {pid}").into());
+
+    run_tcp_shim(app.clone(), proc_state).await.expect("TODO: panic message");
 
     // 拿到输出管道
     let stdout = child.stdout.take();

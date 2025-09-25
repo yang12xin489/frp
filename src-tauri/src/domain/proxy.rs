@@ -128,14 +128,39 @@ pub struct HttpsProxyExport {
     common: ProxyCommonExport,
 }
 
-pub fn to_proxy_export(p: &Proxy) -> Option<ProxyExport> {
-    use crate::domain::proxy::Proxy as P;
-    match p {
-        P::Http(h) => Some(ProxyExport::Http(HttpProxyExport {
+pub fn to_proxy_export(proxy: &Proxy, proc_state: &FrpcProcState) -> Option<ProxyExport> {
+    let (listener, addr) = reserve_listener_loopback().expect("reserve_listener_loopback failed");
+    let (id, target_addr_str) = match proxy {
+        Proxy::Http(h) => (
+            h.common.id.clone(),
+            format!("{}:{}", h.common.local_ip, h.common.local_port),
+        ),
+        Proxy::Https(h) => (
+            h.common.id.clone(),
+            format!("{}:{}", h.common.local_ip, h.common.local_port),
+        ),
+    };
+    let target: SocketAddr = target_addr_str
+        .parse()
+        .expect("invalid local_ip/local_port");
+
+    {
+        let mut guard = proc_state
+            .proxy_specs
+            .lock()
+            .expect("lock proxy_specs failed");
+        guard.push(ProxySpec {
+            id,
+            listener,
+            target,
+        });
+    }
+    match proxy {
+        Proxy::Http(h) => Some(ProxyExport::Http(HttpProxyExport {
             common: ProxyCommonExport {
                 name: h.common.name.clone(),
-                local_ip: h.common.local_ip.clone(),
-                local_port: h.common.local_port,
+                local_ip: addr.ip().to_string(),
+                local_port: addr.port(),
             },
             subdomain: h.subdomain.clone(),
             custom_domains: h.custom_domains.clone(),
@@ -143,12 +168,26 @@ pub fn to_proxy_export(p: &Proxy) -> Option<ProxyExport> {
             http_user: h.http_user.clone(),
             http_password: h.http_password.clone(),
         })),
-        P::Https(h) => Some(ProxyExport::Https(HttpsProxyExport {
+        Proxy::Https(h) => Some(ProxyExport::Https(HttpsProxyExport {
             common: ProxyCommonExport {
                 name: h.common.name.clone(),
-                local_ip: h.common.local_ip.clone(),
-                local_port: h.common.local_port,
+                local_ip: addr.ip().to_string(),
+                local_port: addr.port(),
             },
         })),
     }
+}
+
+use crate::services::local_proxy::ProxySpec;
+use crate::state::FrpcProcState;
+use std::net::{SocketAddr, TcpListener as StdTcpListener};
+use tokio::net::TcpListener;
+
+fn reserve_listener_loopback() -> std::io::Result<(TcpListener, SocketAddr)> {
+    // 让操作系统选择一个空闲端口
+    let std_tcp_listener = StdTcpListener::bind(("127.0.0.1", 0))?;
+    std_tcp_listener.set_nonblocking(true)?;
+    let addr = std_tcp_listener.local_addr()?;
+    let listener = TcpListener::from_std(std_tcp_listener)?;
+    Ok((listener, addr))
 }

@@ -1,5 +1,5 @@
 use crate::domain::config::FrpcConfig;
-use crate::state::AppState;
+use crate::state::{AppState, FrpcProcState};
 use crate::{
     errors::Result,
     infra::{
@@ -54,9 +54,13 @@ pub fn save_now(app: &AppHandle, state: &AppState) -> Result<()> {
     Ok(())
 }
 
-pub fn export_toml_to_file(app: &AppHandle, state: &AppState) -> Result<String> {
+pub fn export_toml_to_file(
+    app: &AppHandle,
+    state: &AppState,
+    proc_state: &FrpcProcState,
+) -> Result<String> {
     let cfg = state.read().config.clone();
-    let dto = cfg.to_export();
+    let dto = cfg.to_export(proc_state);
     let toml_str = toml::to_string_pretty(&dto)?;
     let dir = app_config_dir(app);
     std::fs::create_dir_all(&dir)?;

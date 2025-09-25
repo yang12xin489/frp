@@ -1,5 +1,6 @@
 use super::types::AuthType;
 use crate::domain::proxy::{to_proxy_export, ProxyExport};
+use crate::state::FrpcProcState;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -58,12 +59,12 @@ pub struct FrpcConfigExport {
 }
 
 impl FrpcConfig {
-    pub fn to_export(&self) -> FrpcConfigExport {
+    pub fn to_export(&self, proc_state: &FrpcProcState) -> FrpcConfigExport {
         let proxies = self
             .proxies
             .iter()
             .filter(|p| p.enable)
-            .filter_map(to_proxy_export) // -> Option<ProxyExport>
+            .filter_map(|m| to_proxy_export(m, proc_state)) // -> Option<ProxyExport>
             .collect();
 
         let web_server = WebServerExport {
