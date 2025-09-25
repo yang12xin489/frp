@@ -79,7 +79,7 @@ impl<T: AsyncWrite + Unpin> AsyncWrite for CountRead<T> {
     fn poll_flush(
         mut self: std::pin::Pin<&mut Self>,
         cx: &mut std::task::Context<'_>,
-    ) -> std::task::Poll<std::io::Result<()>> {
+    ) -> std::task::Poll<Result<()>> {
         std::pin::Pin::new(&mut self.inner).poll_flush(cx)
     }
     #[inline]
@@ -127,7 +127,7 @@ pub async fn run_tcp_shim(app: AppHandle, proc_state: &FrpcProcState) -> Result<
         let app = app.clone();
         let view = Arc::new(view);
         async move {
-            const MS: u64 = 200;
+            const MS: u64 = 1000;
             let dt = MS as f64 / 1000.0;
             let mut tick = interval(Duration::from_millis(MS));
             tick.set_missed_tick_behavior(MissedTickBehavior::Skip);
